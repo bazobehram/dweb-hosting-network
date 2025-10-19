@@ -13,6 +13,25 @@
         <p class="subtitle">Fetch manifest and render content</p>
       </header>
 
+      <section class="status">
+        <h2>Status</h2>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">Resolve mode</span>
+            <span id="statusMode" class="badge">Peer-first</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Last chunk</span>
+            <span id="statusLast" class="badge badge-muted">Waiting</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Totals</span>
+            <span id="statusTotals" class="badge badge-muted">Peer 0 · Pointer 0 · Registry 0 · Cache 0</span>
+          </div>
+        </div>
+        <p id="statusFallback" class="status-fallback hidden"></p>
+      </section>
+
       <section>
         <label for="domainInput">Domain</label>
         <input id="domainInput" type="text" placeholder="example.dweb" />

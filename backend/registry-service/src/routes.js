@@ -212,11 +212,22 @@ function validateManifest(manifest) {
   if (!Array.isArray(manifest.chunkHashes)) {
     throw new Error('Invalid manifest: chunkHashes must be array');
   }
-  if (!manifest.chunkData || !Array.isArray(manifest.chunkData)) {
+  const chunkCount = Number(manifest.chunkCount);
+  if (manifest.chunkData === undefined || manifest.chunkData === null) {
+    if (!Number.isFinite(chunkCount) || chunkCount < 0) {
+      throw new Error('Invalid manifest: chunkCount must be a non-negative number');
+    }
+    manifest.chunkData = Array.from({ length: chunkCount }, () => null);
+  }
+  if (!Array.isArray(manifest.chunkData)) {
     throw new Error('Invalid manifest: chunkData must be array');
   }
-  if (!manifest.chunkData.every((chunk) => typeof chunk === 'string')) {
-    throw new Error('Invalid manifest: chunkData entries must be base64 strings');
+  if (
+    !manifest.chunkData.every(
+      (chunk) => chunk === null || typeof chunk === 'string'
+    )
+  ) {
+    throw new Error('Invalid manifest: chunkData entries must be base64 strings or null');
   }
   if (manifest.chunkReplicas) {
     if (!Array.isArray(manifest.chunkReplicas)) {

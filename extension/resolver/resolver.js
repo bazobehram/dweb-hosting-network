@@ -9,11 +9,21 @@ const storageApiKeyInput = document.getElementById("storageApiKey");
 const resolveBtn = document.getElementById("resolveBtn");
 const logOutput = document.getElementById("logOutput");
 const previewFrame = document.getElementById("previewFrame");
+const statusModeEl = document.getElementById("statusMode");
+const statusLastEl = document.getElementById("statusLast");
+const statusTotalsEl = document.getElementById("statusTotals");
+const statusFallbackEl = document.getElementById("statusFallback");
 
 const REGISTRY_API_KEY_STORAGE_KEY = "dweb-registry-api-key";
 const STORAGE_API_KEY_STORAGE_KEY = "dweb-storage-api-key";
 const STORAGE_SERVICE_URL_STORAGE_KEY = "dweb-storage-service-url";
 const DEFAULT_STORAGE_SERVICE_URL = "http://localhost:8789";
+const SOURCE_LABELS = {
+  peer: "Peer",
+  pointer: "Storage pointer",
+  registry: "Registry",
+  cache: "Cache"
+};
 
 let currentRegistryApiKey = loadRegistryApiKey();
 let storageApiKey = loadStorageApiKey();
@@ -23,6 +33,7 @@ let storageServiceOrigin = computeOrigin(storageServiceUrl);
 let registryClient = new RegistryClient(registryUrlInput.value, {
   apiKey: currentRegistryApiKey,
 });
+let currentResolveStats = createResolveStats();
 
 if (registryApiKeyInput) {
   registryApiKeyInput.value = currentRegistryApiKey;
@@ -63,6 +74,8 @@ if ("serviceWorker" in navigator) {
     );
 }
 
+resetResolveStats();
+
 registryUrlInput.addEventListener("change", () => {
   registryClient = new RegistryClient(registryUrlInput.value.trim(), {
     apiKey: currentRegistryApiKey,
@@ -77,6 +90,7 @@ resolveBtn.addEventListener("click", async () => {
     return;
   }
 
+  resetResolveStats();
   appendLog(`Resolving ${domain} ...`);
 
   try {
@@ -129,6 +143,79 @@ function appendLog(text) {
   logOutput.scrollTop = logOutput.scrollHeight;
 }
 
+function createResolveStats() {
+  return {
+    total: 0,
+    peer: 0,
+    pointer: 0,
+    registry: 0,
+    cache: 0,
+    fallback: false,
+    fallbackReasons: new Set(),
+    last: null
+  };
+}
+
+function resetResolveStats() {
+  currentResolveStats = createResolveStats();
+  updateStatusModeBadge();
+  updateStatusDisplay();
+}
+
+function updateStatusModeBadge() {
+  if (!statusModeEl) return;
+  const fallbackEnabled = settings.fallbackToRegistry;
+  statusModeEl.textContent = fallbackEnabled
+    ? "Peer-first (fallback enabled)"
+    : "Peer-only";
+  statusModeEl.className = `badge ${fallbackEnabled ? "badge-info" : "badge-success"}`;
+}
+
+function updateStatusDisplay() {
+  if (statusTotalsEl) {
+    statusTotalsEl.className = "badge badge-muted";
+    statusTotalsEl.textContent = `Peer ${currentResolveStats.peer} · Pointer ${currentResolveStats.pointer} · Registry ${currentResolveStats.registry} · Cache ${currentResolveStats.cache}`;
+  }
+  if (statusLastEl) {
+    const last = currentResolveStats.last;
+    let tone = "badge-muted";
+    if (last === "peer") tone = "badge-success";
+    else if (last === "pointer") tone = "badge-info";
+    const label = last ? SOURCE_LABELS[last] ?? last : "Waiting";
+    statusLastEl.className = `badge ${tone}`;
+    statusLastEl.textContent = label;
+  }
+  if (statusFallbackEl) {
+    if (currentResolveStats.fallback) {
+      const reasons = Array.from(currentResolveStats.fallbackReasons);
+      const detail = reasons.length ? reasons.join(", ") : "engaged";
+      statusFallbackEl.classList.remove("hidden");
+      statusFallbackEl.innerHTML = `<strong>Fallback</strong>: ${detail}`;
+    } else {
+      statusFallbackEl.classList.add("hidden");
+      statusFallbackEl.textContent = "";
+    }
+  }
+}
+
+function recordChunkSource(source) {
+  if (!currentResolveStats) return;
+  if (!["peer", "pointer", "registry", "cache"].includes(source)) return;
+  currentResolveStats.total += 1;
+  currentResolveStats[source] += 1;
+  currentResolveStats.last = source;
+  updateStatusDisplay();
+}
+
+function recordFallback(reason) {
+  if (!currentResolveStats) return;
+  currentResolveStats.fallback = true;
+  if (reason) {
+    currentResolveStats.fallbackReasons.add(reason);
+  }
+  updateStatusDisplay();
+}
+
 async function fetchChunk(manifestId, index, replicas) {
   if (settings.preferCache && navigator.serviceWorker.controller) {
     const cacheResponse = await caches
@@ -140,6 +227,7 @@ async function fetchChunk(manifestId, index, replicas) {
       const payload = await cacheResponse.json();
       if (payload?.data) {
         appendLog(`Chunk ${index} served from cache.`);
+        recordChunkSource("cache");
         return base64ToUint8Array(payload.data);
       }
     }
@@ -156,6 +244,7 @@ async function fetchChunk(manifestId, index, replicas) {
       });
       if (peerResponse?.status === "success" && peerResponse.data) {
         appendLog(`Chunk ${index} fetched from peer.`);
+        recordChunkSource("peer");
         return base64ToUint8Array(peerResponse.data);
       }
       if (peerResponse?.status === "in-progress") {
@@ -172,13 +261,19 @@ async function fetchChunk(manifestId, index, replicas) {
           `Peer reported error for chunk ${index}: ${peerResponse.reason ?? "unknown"}`
         );
       }
+      const status = peerResponse?.status;
+      if (status && status !== "success") {
+        recordFallback(`peer-${status}`);
+      }
     } catch (error) {
       appendLog(`Peer request failed: ${error.message}`);
+      recordFallback("peer-exception");
     }
   }
 
   if (!settings.fallbackToRegistry) {
     appendLog(`Skipping registry fallback for chunk ${index}.`);
+    recordFallback("registry-fallback-disabled");
     return null;
   }
 
@@ -195,6 +290,7 @@ async function fetchChunk(manifestId, index, replicas) {
 
     if (chunkRecord.data) {
       appendLog(`Chunk ${index} served from registry.`);
+      recordChunkSource("registry");
       return base64ToUint8Array(chunkRecord.data);
     }
 
@@ -211,24 +307,30 @@ async function fetchChunk(manifestId, index, replicas) {
           const payload = await pointerResponse.json();
           if (payload?.data) {
             appendLog(`Chunk ${index} served via storage pointer.`);
+            recordChunkSource("pointer");
             return base64ToUint8Array(payload.data);
           }
         } else {
           appendLog(
             `Pointer request failed for chunk ${index}: ${pointerResponse.status}`
           );
+          recordFallback(`pointer-${pointerResponse.status}`);
         }
       } catch (error) {
         appendLog(`Pointer fetch failed for chunk ${index}: ${error.message}`);
+        recordFallback("pointer-error");
       }
     } else {
       appendLog(`Chunk ${index} has no data or storage pointer.`);
+      recordFallback("chunk-missing");
     }
   } catch (error) {
     appendLog(`Registry chunk fetch failed: ${error.message}`);
+    recordFallback("registry-error");
   }
 
   appendLog(`Chunk ${index} unavailable.`);
+  recordFallback("chunk-unavailable");
   return null;
 }
 

@@ -18,7 +18,7 @@
         <input
           id="signalingUrl"
           type="text"
-          value="ws://localhost:8787"
+          value="ws://34.107.74.70:8787"
           autocomplete="off"
         />
 
@@ -27,6 +27,7 @@
           id="signalingAuthToken"
           type="password"
           placeholder="Leave blank if signaling is public"
+          value="choose-a-strong-secret"
           autocomplete="off"
         />
 
@@ -92,7 +93,7 @@
           type="number"
           min="1"
           max="5"
-          value="2"
+          value="3"
           autocomplete="off"
         />
 
@@ -100,7 +101,7 @@
         <input
           id="storageServiceUrl"
           type="text"
-          value="http://localhost:8789"
+          value="http://34.107.74.70:8789"
           autocomplete="off"
         />
 
@@ -109,8 +110,25 @@
           id="storageApiKey"
           type="password"
           placeholder="Required when STORAGE_API_KEYS is set"
+          value="storage-test-key"
           autocomplete="off"
         />
+
+        <div class="persistence-options">
+          <label class="replica-toggle">
+            <input type="checkbox" id="inlineRegistryDataToggle" />
+            <span>Store chunk copies in registry</span>
+          </label>
+
+          <label class="replica-toggle">
+            <input type="checkbox" id="storageFallbackToggle" />
+            <span>Upload fallback copies to storage service</span>
+          </label>
+
+          <p class="persistence-hint">
+            Toggle persistence features: enable to keep fallback copies, disable to rely purely on peer replicas.
+          </p>
+        </div>
 
         <div class="manual-replicas" id="manualReplicaContainer">
           <p class="hint">Manual selection is available when auto-select is disabled.</p>
@@ -133,7 +151,7 @@
         <input
           id="registryUrl"
           type="text"
-          value="http://localhost:8788"
+          value="http://34.107.74.70:8788"
           autocomplete="off"
         />
 
@@ -142,6 +160,7 @@
           id="registryApiKey"
           type="password"
           placeholder="Leave blank if registry is public"
+          value="registry-test-key"
           autocomplete="off"
         />
 

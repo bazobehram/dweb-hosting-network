@@ -166,6 +166,21 @@ select {
   margin-bottom: 0.75rem;
 }
 
+.persistence-options {
+  border-top: 1px solid #334155;
+  padding-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.persistence-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #cbd5f5;
+}
+
 .manual-replicas {
   border-top: 1px solid #334155;
   padding-top: 0.75rem;
@@ -247,6 +262,27 @@ select {
 }
 
 .replication-status .status-item .progress {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color: #cbd5f5;
+}
+
+.replication-status .status-summary {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.replication-status .summary-heading {
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.replication-status .summary-detail {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   color: #cbd5f5;
 }

@@ -32,31 +32,79 @@ const replicationStatusContainer = document.getElementById('replicationStatus');
 const clearManualReplicasBtn = document.getElementById('clearManualReplicasBtn');
 const resetReplicationSettingsBtn = document.getElementById('resetReplicationSettingsBtn');
 const storageServiceUrlInput = document.getElementById('storageServiceUrl');
+const inlineRegistryDataToggle = document.getElementById('inlineRegistryDataToggle');
+const storageFallbackToggle = document.getElementById('storageFallbackToggle');
 const REPLICATION_STORAGE_KEY = 'dweb-replication-settings';
 const REGISTRY_API_KEY_STORAGE_KEY = 'dweb-registry-api-key';
 const SIGNALING_AUTH_STORAGE_KEY = 'dweb-signaling-auth-token';
 const STORAGE_API_KEY_STORAGE_KEY = 'dweb-storage-api-key';
 const STORAGE_SERVICE_URL_STORAGE_KEY = 'dweb-storage-service-url';
+const PERSISTENCE_SETTINGS_STORAGE_KEY = 'dweb-persistence-settings';
+
+const DEFAULT_SIGNALING_URL = 'ws://34.107.74.70:8787';
+const DEFAULT_SIGNALING_SECRET = 'choose-a-strong-secret';
+const DEFAULT_REGISTRY_URL = 'http://34.107.74.70:8788';
+const DEFAULT_REGISTRY_API_KEY = 'registry-test-key';
+const DEFAULT_STORAGE_SERVICE_URL = 'http://34.107.74.70:8789';
+const DEFAULT_STORAGE_API_KEY = 'storage-test-key';
+
+if (signalingInput && !signalingInput.value) {
+  signalingInput.value = DEFAULT_SIGNALING_URL;
+}
+if (registryUrlInput && !registryUrlInput.value) {
+  registryUrlInput.value = DEFAULT_REGISTRY_URL;
+}
 
 const chunkManager = new ChunkManager();
-const storedRegistryApiKey = loadRegistryApiKey();
-const storedSignalingAuthToken = loadSignalingAuthToken();
-const storedStorageApiKey = loadStorageApiKey();
-const registryClient = new RegistryClient(registryUrlInput.value, {
+let storedRegistryApiKey = loadRegistryApiKey();
+if (!storedRegistryApiKey && DEFAULT_REGISTRY_API_KEY) {
+  storedRegistryApiKey = DEFAULT_REGISTRY_API_KEY;
+  persistRegistryApiKey(storedRegistryApiKey);
+}
+let storedSignalingAuthToken = loadSignalingAuthToken();
+if (!storedSignalingAuthToken && DEFAULT_SIGNALING_SECRET) {
+  storedSignalingAuthToken = DEFAULT_SIGNALING_SECRET;
+  persistSignalingAuthToken(storedSignalingAuthToken);
+}
+let storedStorageApiKey = loadStorageApiKey();
+if (!storedStorageApiKey && DEFAULT_STORAGE_API_KEY) {
+  storedStorageApiKey = DEFAULT_STORAGE_API_KEY;
+  persistStorageApiKey(storedStorageApiKey);
+}
+const registryClient = new RegistryClient(registryUrlInput.value || DEFAULT_REGISTRY_URL, {
   apiKey: storedRegistryApiKey
 });
 const chunkCache = new Map();
-const STORE_CHUNK_DATA_IN_REGISTRY = true;
-const UPLOAD_CHUNKS_TO_STORAGE = true;
-const DEFAULT_STORAGE_SERVICE_URL = 'http://localhost:8789';
+const manifestReplicationState = new Map();
+const rawStorageServiceUrl = loadStorageServiceUrl();
 let storageServiceUrl =
-  normaliseStorageServiceUrl(loadStorageServiceUrl()) || DEFAULT_STORAGE_SERVICE_URL;
+  normaliseStorageServiceUrl(rawStorageServiceUrl) || DEFAULT_STORAGE_SERVICE_URL;
+if (!rawStorageServiceUrl) {
+  persistStorageServiceUrl(storageServiceUrl);
+}
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
-const DEFAULT_MAX_REPLICA_TARGETS = 2;
+const PERSISTENCE_DEFAULTS = {
+  storeChunkData: false,
+  uploadChunksToStorage: false
+};
+let persistenceSettings = {
+  storeChunkData: PERSISTENCE_DEFAULTS.storeChunkData,
+  uploadChunksToStorage: PERSISTENCE_DEFAULTS.uploadChunksToStorage
+};
+const storedPersistence = loadPersistenceSettings();
+if (typeof storedPersistence.storeChunkData === 'boolean') {
+  persistenceSettings.storeChunkData = storedPersistence.storeChunkData;
+}
+if (typeof storedPersistence.uploadChunksToStorage === 'boolean') {
+  persistenceSettings.uploadChunksToStorage = storedPersistence.uploadChunksToStorage;
+}
+applyPersistenceToggleState();
+const DEFAULT_MAX_REPLICA_TARGETS = 3;
 const MAX_REPLICATION_RETRIES = 3;
 const REPLICATION_ACK_TIMEOUT = 8_000;
 const REPLICATION_MAX_INFLIGHT = 2;
 const MANUAL_REPLICA_LIMIT = 5;
+const REPLICATION_ACK_QUORUM = 2;
 let replicationUpdateHandler = () => {};
 function setReplicationUpdateHandler(handler) {
   replicationUpdateHandler = typeof handler === 'function' ? handler : () => {};
@@ -192,6 +240,142 @@ function persistStorageServiceUrl(value) {
   }
 }
 
+function loadPersistenceSettings() {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(PERSISTENCE_SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistPersistenceSettings() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(
+      PERSISTENCE_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        storeChunkData: shouldStoreChunkDataInRegistry(),
+        uploadChunksToStorage: shouldUploadChunksToStorage()
+      })
+    );
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function applyPersistenceToggleState() {
+  if (inlineRegistryDataToggle) {
+    inlineRegistryDataToggle.checked = shouldStoreChunkDataInRegistry();
+  }
+  if (storageFallbackToggle) {
+    storageFallbackToggle.checked = shouldUploadChunksToStorage();
+  }
+}
+
+function shouldStoreChunkDataInRegistry() {
+  return Boolean(persistenceSettings.storeChunkData);
+}
+
+function shouldUploadChunksToStorage() {
+  return Boolean(persistenceSettings.uploadChunksToStorage);
+}
+
+function getReplicaTargetCapacity() {
+  if (autoReplicaSelection) {
+    return Math.max(1, maxReplicaTargets);
+  }
+  const selected = manualReplicaPrefs.size;
+  return Math.max(1, selected || 0);
+}
+
+function getEffectiveAckQuorum() {
+  return Math.max(1, Math.min(REPLICATION_ACK_QUORUM, getReplicaTargetCapacity()));
+}
+
+function resolveManifestId(manifest) {
+  if (!manifest || typeof manifest !== 'object') return null;
+  return manifest.manifestId ?? manifest.transferId ?? null;
+}
+
+function resetManifestReplicationState(manifest) {
+  const manifestId = resolveManifestId(manifest);
+  if (!manifestId) return;
+  manifestReplicationState.clear();
+  manifestReplicationState.set(manifestId, {
+    required: getEffectiveAckQuorum(),
+    remoteAcks: new Set(),
+    updatedAt: Date.now()
+  });
+  refreshRegisterButtonState();
+  renderReplicationStatus();
+}
+
+function clearManifestReplicationState(manifestId) {
+  if (!manifestId) return;
+  manifestReplicationState.delete(manifestId);
+  refreshRegisterButtonState();
+  renderReplicationStatus();
+}
+
+function markManifestReplica(manifestId, peerId) {
+  if (!manifestId || !peerId || peerId === localPeerId) return;
+  const state = manifestReplicationState.get(manifestId);
+  if (!state) return;
+  if (!state.remoteAcks.has(peerId)) {
+    state.remoteAcks.add(peerId);
+    state.updatedAt = Date.now();
+    appendRegistryLog(
+      `Replica quorum progress: ${state.remoteAcks.size}/${state.required} remote peers confirmed (${peerId}).`
+    );
+  }
+  const required = getEffectiveAckQuorum();
+  if (state.required !== required) {
+    state.required = required;
+  }
+  if (state.remoteAcks.size >= state.required) {
+    appendRegistryLog('Replication quorum reached. Domain registration unlocked.');
+  }
+  refreshRegisterButtonState();
+  renderReplicationStatus();
+}
+
+function manifestHasReplicationQuorum(manifestId) {
+  const state = manifestReplicationState.get(manifestId);
+  if (!state) return false;
+  return state.remoteAcks.size >= state.required;
+}
+
+function getManifestReplicationSummary(manifestId) {
+  const state = manifestReplicationState.get(manifestId);
+  if (!state) {
+    return {
+      required: getEffectiveAckQuorum(),
+      remoteAckCount: 0,
+      peers: [],
+      updatedAt: null
+    };
+  }
+  return {
+    required: state.required,
+    remoteAckCount: state.remoteAcks.size,
+    peers: Array.from(state.remoteAcks),
+    updatedAt: state.updatedAt ?? null
+  };
+}
+
+function updateManifestQuorumTargets() {
+  const required = getEffectiveAckQuorum();
+  manifestReplicationState.forEach((state) => {
+    state.required = required;
+  });
+  refreshRegisterButtonState();
+  renderReplicationStatus();
+}
+
 function computeOrigin(url) {
   try {
     return new URL(url).origin;
@@ -305,6 +489,9 @@ if (storageServiceUrlInput) {
     applyStorageServiceUrl(storageServiceUrlInput.value.trim());
   });
 }
+
+inlineRegistryDataToggle?.addEventListener('change', handleInlineRegistryToggle);
+storageFallbackToggle?.addEventListener('change', handleStorageFallbackToggle);
 
 chrome.runtime.onMessage.addListener((message) => {
   if (!message || typeof message !== 'object') {
@@ -1406,10 +1593,11 @@ function handleTimeout(jobId, chunkIndex) {
     appendRegistryLog(
       `Registry updated: ${job.targetPeerId} now serves manifest ${manifestId}.`
     );
+    markManifestReplica(manifestId, job.targetPeerId);
   }
 
   async function attemptStorageFallback(job) {
-    if (!UPLOAD_CHUNKS_TO_STORAGE) {
+    if (!shouldUploadChunksToStorage()) {
       appendChannelLog('Storage fallback disabled; skipping pointer upload.');
       return;
     }
@@ -1460,7 +1648,7 @@ function handleTimeout(jobId, chunkIndex) {
 
         await registryClient.updateChunkPointer(manifestId, index, {
           pointer,
-          removeData: !STORE_CHUNK_DATA_IN_REGISTRY,
+          removeData: !shouldStoreChunkDataInRegistry(),
           expiresAt: null
         });
         appendRegistryLog(
@@ -1542,11 +1730,34 @@ function selectReplicaCandidates(limit) {
     .slice(0, Math.max(1, limit));
 }
 
+function handleInlineRegistryToggle(event) {
+  const enabled = Boolean(event?.target?.checked);
+  persistenceSettings.storeChunkData = enabled;
+  persistPersistenceSettings();
+  appendRegistryLog(
+    enabled
+      ? 'Registry inline chunk copies enabled for new uploads.'
+      : 'Registry inline chunk copies disabled; relying on peer replicas.'
+  );
+}
+
+function handleStorageFallbackToggle(event) {
+  const enabled = Boolean(event?.target?.checked);
+  persistenceSettings.uploadChunksToStorage = enabled;
+  persistPersistenceSettings();
+  appendChannelLog(
+    enabled
+      ? 'Storage fallback enabled for degraded replicas.'
+      : 'Storage fallback disabled; degraded replicas will not upload to storage.'
+  );
+}
+
 function handleAutoReplicaToggle() {
   autoReplicaSelection = Boolean(autoReplicaToggle?.checked);
   updateManualReplicaUI();
   replicationManager.syncManualTargets();
   persistReplicationSettings();
+  updateManifestQuorumTargets();
   appendLog(
     `Replication mode set to ${autoReplicaSelection ? 'auto-select' : 'manual selection'}.`
   );
@@ -1564,6 +1775,7 @@ function handleReplicaTargetChange() {
   replicaTargetCountInput.value = String(clamped);
   appendLog(`Replication target limit set to ${clamped} peer${clamped === 1 ? '' : 's'}.`);
   persistReplicationSettings();
+  updateManifestQuorumTargets();
   queueMicrotask(() => replicationManager.handleChannelOpen());
   renderReplicationStatus();
 }
@@ -1674,6 +1886,7 @@ function setManualReplicaSelection(peerId, selected) {
 
   persistReplicationSettings();
   renderManualReplicaList();
+  updateManifestQuorumTargets();
 
   if (!autoReplicaSelection) {
     if (manualReplicaPrefs.size === 0) {
@@ -1693,6 +1906,7 @@ function clearManualReplicaSelections() {
   manualReplicaPrefs.clear();
   persistReplicationSettings();
   updateManualReplicaUI();
+  updateManifestQuorumTargets();
   if (!autoReplicaSelection) {
     replicationManager.syncManualTargets();
   }
@@ -1712,6 +1926,7 @@ function resetReplicationSettings() {
   }
   persistReplicationSettings();
   updateManualReplicaUI();
+  updateManifestQuorumTargets();
   replicationManager.syncManualTargets();
   queueMicrotask(() => replicationManager.handleChannelOpen());
   appendLog('Replication settings reset to defaults.');
@@ -1730,6 +1945,7 @@ function pruneManualReplicaPrefs() {
     persistReplicationSettings();
     renderManualReplicaList();
     renderReplicationStatus();
+    updateManifestQuorumTargets();
     if (!autoReplicaSelection) {
       replicationManager.syncManualTargets();
     }
@@ -1773,6 +1989,36 @@ function renderReplicationStatus(snapshot = (replicationManager?.getSnapshot?.()
   if (!replicationStatusContainer) return;
   const list = Array.isArray(snapshot) ? [...snapshot] : [];
   replicationStatusContainer.innerHTML = '';
+
+  const manifestId = resolveManifestId(lastManifestRecord);
+  if (manifestId) {
+    const summary = getManifestReplicationSummary(manifestId);
+    const summaryItem = document.createElement('div');
+    summaryItem.className = 'status-summary';
+    const headline = document.createElement('div');
+    headline.className = 'summary-heading';
+    headline.textContent = `Remote replicas ${summary.remoteAckCount}/${summary.required}`;
+    summaryItem.appendChild(headline);
+    if (summary.peers.length) {
+      const peerLine = document.createElement('div');
+      peerLine.className = 'summary-detail';
+      peerLine.textContent = `Peers: ${summary.peers.join(', ')}`;
+      summaryItem.appendChild(peerLine);
+    } else {
+      const pendingLine = document.createElement('div');
+      pendingLine.className = 'summary-detail';
+      pendingLine.textContent = 'Waiting for remote replicas...';
+      summaryItem.appendChild(pendingLine);
+    }
+    if (summary.updatedAt) {
+      const updatedLine = document.createElement('div');
+      updatedLine.className = 'summary-detail';
+      updatedLine.textContent = `Updated ${timeAgo(summary.updatedAt)}.`;
+      summaryItem.appendChild(updatedLine);
+    }
+    replicationStatusContainer.appendChild(summaryItem);
+  }
+
   if (!list.length) {
     const empty = document.createElement('p');
     empty.className = 'status-empty';
@@ -1861,6 +2107,7 @@ function initializeReplicationControls() {
     });
   }
 
+  updateManifestQuorumTargets();
   updateManualReplicaUI();
   renderReplicationStatus();
   queueMicrotask(() => replicationManager.syncManualTargets());
@@ -2185,17 +2432,19 @@ async function registerManifestWithRegistry(manifest) {
     const chunkData = [];
     const chunkReplicas = [];
     const chunkPointers = [];
+    const storeInline = shouldStoreChunkDataInRegistry();
+    const uploadToStorage = shouldUploadChunksToStorage();
     if (transfer) {
       for (let i = 0; i < transfer.totalChunks; i += 1) {
-        let base64Chunk = transfer.getChunkBase64(i);
+        const base64Chunk = transfer.getChunkBase64(i);
 
-        if (STORE_CHUNK_DATA_IN_REGISTRY) {
+        if (storeInline && base64Chunk) {
           chunkData.push(base64Chunk);
         } else {
           chunkData.push(null);
         }
 
-        if (UPLOAD_CHUNKS_TO_STORAGE && base64Chunk) {
+        if (uploadToStorage && base64Chunk) {
           try {
             await uploadChunkToStorage(manifest.transferId, i, base64Chunk);
             chunkPointers.push(`${storageServiceUrl}/chunks/${manifest.transferId}/${i}`);
@@ -2220,12 +2469,18 @@ async function registerManifestWithRegistry(manifest) {
       replicas: [localPeerId, ...(incomingTransfer?.manifest?.replicas ?? [])]
     });
     lastManifestRecord = record;
+    resetManifestReplicationState(record);
+    const quorum = getEffectiveAckQuorum();
+    appendRegistryLog(
+      `Awaiting remote replicas: need ${quorum} confirmation${quorum === 1 ? '' : 's'} before binding domain.`
+    );
     appendRegistryLog(`Manifest registered: ${record.manifestId ?? record.transferId}`);
     replicationManager.scheduleReplication(record, transfer);
     refreshRegisterButtonState();
   } catch (error) {
     appendRegistryLog(`Manifest registration failed: ${error.message}`);
     console.error('Registry manifest error', error);
+    clearManifestReplicationState(resolveManifestId(manifest));
     lastManifestRecord = null;
     refreshRegisterButtonState();
   }
@@ -2262,10 +2517,23 @@ function delay(ms) {
 }
 
 function refreshRegisterButtonState() {
-  const hasManifest = Boolean(lastManifestRecord);
+  const manifestId = resolveManifestId(lastManifestRecord);
+  const hasManifest = Boolean(manifestId);
   const hasDomain = Boolean(domainInput.value.trim());
   const hasOwner = Boolean(ownerInput.value.trim());
-  registerDomainBtn.disabled = !(hasManifest && hasDomain && hasOwner);
+  const hasQuorum = manifestId ? manifestHasReplicationQuorum(manifestId) : false;
+  const enabled = hasManifest && hasDomain && hasOwner && hasQuorum;
+  registerDomainBtn.disabled = !enabled;
+  if (!enabled && hasManifest && hasDomain && hasOwner && manifestId) {
+    const summary = getManifestReplicationSummary(manifestId);
+    const remaining = Math.max(0, summary.required - summary.remoteAckCount);
+    registerDomainBtn.title =
+      remaining > 0
+        ? `Waiting for ${remaining} more remote replica${remaining === 1 ? '' : 's'} before binding domain.`
+        : '';
+  } else {
+    registerDomainBtn.title = '';
+  }
 }
 
 
