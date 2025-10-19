@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DWeb Hosting Network</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DWeb Hosting Network</h1>
+        <p class="subtitle">Prototype panel — signaling connection test</p>
+      </header>
+
+      <section class="connection-form">
+        <label for="signalingUrl">Signaling Server URL</label>
+        <input
+          id="signalingUrl"
+          type="text"
+          value="ws://localhost:8787"
+          autocomplete="off"
+        />
+
+        <label for="signalingAuthToken">Signaling Shared Secret</label>
+        <input
+          id="signalingAuthToken"
+          type="password"
+          placeholder="Leave blank if signaling is public"
+          autocomplete="off"
+        />
+
+        <label for="peerId">Peer ID (optional)</label>
+        <input
+          id="peerId"
+          type="text"
+          placeholder="Leave empty to auto-generate"
+          autocomplete="off"
+        />
+
+        <button id="connectBtn">Connect</button>
+      </section>
+
+      <section class="status">
+        <h2>Status</h2>
+        <div id="statusLog" class="log"></div>
+      </section>
+
+      <section class="peers">
+        <h2>Connected Peers</h2>
+        <ul id="peerList"></ul>
+        <div class="peer-actions">
+          <label for="peerSelect">Select peer to connect</label>
+          <select id="peerSelect"></select>
+          <button id="openChannelBtn" disabled>Open Data Channel</button>
+        </div>
+      </section>
+
+      <section class="channel">
+        <h2>Data Channel</h2>
+        <p id="channelStatus">Channel closed</p>
+        <label for="messageInput" class="message-label">Message</label>
+        <div class="channel-send">
+          <input
+            id="messageInput"
+            type="text"
+            placeholder="Type message to send"
+            autocomplete="off"
+            disabled
+          />
+          <button id="sendMessageBtn" disabled>Send</button>
+        </div>
+        <div class="file-transfer">
+          <label for="fileInput">Select file</label>
+          <input id="fileInput" type="file" disabled />
+          <button id="sendFileBtn" disabled>Send File</button>
+        </div>
+        <div id="channelLog" class="log"></div>
+        <div id="downloadArea" class="download-area"></div>
+      </section>
+
+      <section class="replication">
+        <h2>Replication Settings</h2>
+        <label class="replica-toggle">
+          <input type="checkbox" id="autoReplicaToggle" checked />
+          <span>Auto-select replica peers</span>
+        </label>
+
+        <label for="replicaTargetCount">Max peers per upload</label>
+        <input
+          id="replicaTargetCount"
+          type="number"
+          min="1"
+          max="5"
+          value="2"
+          autocomplete="off"
+        />
+
+        <label for="storageServiceUrl">Storage Service URL</label>
+        <input
+          id="storageServiceUrl"
+          type="text"
+          value="http://localhost:8789"
+          autocomplete="off"
+        />
+
+        <label for="storageApiKey">Storage API Key</label>
+        <input
+          id="storageApiKey"
+          type="password"
+          placeholder="Required when STORAGE_API_KEYS is set"
+          autocomplete="off"
+        />
+
+        <div class="manual-replicas" id="manualReplicaContainer">
+          <p class="hint">Manual selection is available when auto-select is disabled.</p>
+          <div id="manualReplicaList" class="manual-replica-list"></div>
+        </div>
+        <div class="replication-actions">
+          <button type="button" id="clearManualReplicasBtn" class="secondary-button" disabled>
+            Clear Manual Selections
+          </button>
+          <button type="button" id="resetReplicationSettingsBtn" class="secondary-button">
+            Reset Replication Settings
+          </button>
+        </div>
+        <div class="replication-status" id="replicationStatus"></div>
+      </section>
+
+      <section class="registry">
+        <h2>Registry</h2>
+        <label for="registryUrl">Registry URL</label>
+        <input
+          id="registryUrl"
+          type="text"
+          value="http://localhost:8788"
+          autocomplete="off"
+        />
+
+        <label for="registryApiKey">Registry API Key</label>
+        <input
+          id="registryApiKey"
+          type="password"
+          placeholder="Leave blank if registry is public"
+          autocomplete="off"
+        />
+
+        <label for="domainInput">Domain (optional)</label>
+        <input
+          id="domainInput"
+          type="text"
+          placeholder="example.dweb"
+          autocomplete="off"
+        />
+
+        <label for="ownerInput">Owner ID</label>
+        <input
+          id="ownerInput"
+          type="text"
+          placeholder="user-123"
+          autocomplete="off"
+        />
+
+        <button id="registerDomainBtn" disabled>Register Domain</button>
+        <div id="registryLog" class="log"></div>
+      </section>
+    </main>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

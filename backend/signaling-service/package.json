@@ -1,0 +1,16 @@
+{
+  "name": "@dweb/signaling-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "WebSocket-based signaling server for DWeb Hosting Network",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "nanoid": "^4.0.2",
+    "ws": "^8.17.0"
+  }
+}

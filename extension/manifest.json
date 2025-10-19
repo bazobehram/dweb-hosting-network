@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "DWeb Hosting Network",
+  "version": "0.1.1",
+  "description": "Prototype extension that connects to the DWeb signaling service and exposes the hosting panel.",
+  "action": {
+    "default_title": "DWeb Hosting Network",
+    "default_popup": "panel/index.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "resolver/index.html"
+  },
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:*"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*"
+  ]
+}

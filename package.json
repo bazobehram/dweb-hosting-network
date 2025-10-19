@@ -1,0 +1,16 @@
+{
+  "name": "dweb-hosting-network",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Modular workspace for the DWeb Hosting Network project",
+  "packageManager": "npm@10.5.0",
+  "workspaces": [
+    "backend/*",
+    "extension"
+  ],
+  "scripts": {
+    "lint": "echo \"No lint configuration yet\"",
+    "test": "echo \"No tests configured yet\"",
+    "dev": "echo \"Use workspace scripts\""
+  }
+}

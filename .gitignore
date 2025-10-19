@@ -1,0 +1,49 @@
+# Node / workspace artifacts
+node_modules/
+pnpm-lock.yaml
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build / coverage outputs
+dist/
+build/
+coverage/
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# IDE / editor folders
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Project documentation (optional: comment out to track docs)
+docs/
+
+# Runtime storage data
+backend/storage-service/storage-data/
+backend/storage-service/logs/
+backend/storage-service/tmp/
+
+# Registry runtime data
+backend/registry-service/registry-data/
+backend/registry-service/logs/
+backend/registry-service/tmp/
+
+# SQLite or other local databases
+*.sqlite
+*.sqlite-journal
+*.db
+registry-data/
+
+# TLS / TURN secrets if stored locally
+certs/
+turn-secret.txt

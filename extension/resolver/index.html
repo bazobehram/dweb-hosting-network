@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DWeb Resolver</title>
+    <link rel="stylesheet" href="resolver.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DWeb Resolver Prototype</h1>
+        <p class="subtitle">Fetch manifest and render content</p>
+      </header>
+
+      <section>
+        <label for="domainInput">Domain</label>
+        <input id="domainInput" type="text" placeholder="example.dweb" />
+
+        <label for="registryUrl">Registry URL</label>
+        <input id="registryUrl" type="text" value="http://localhost:8788" />
+
+        <label for="registryApiKey">Registry API Key</label>
+        <input
+          id="registryApiKey"
+          type="password"
+          placeholder="Leave blank if registry is public"
+        />
+
+        <label for="storageServiceUrl">Storage Service URL</label>
+        <input
+          id="storageServiceUrl"
+          type="text"
+          value="http://localhost:8789"
+        />
+
+        <label for="storageApiKey">Storage API Key</label>
+        <input
+          id="storageApiKey"
+          type="password"
+          placeholder="Required when STORAGE_API_KEYS is set"
+        />
+
+        <button id="resolveBtn">Resolve</button>
+      </section>
+
+      <section class="log">
+        <h2>Log</h2>
+        <div id="logOutput"></div>
+      </section>
+
+      <section class="preview">
+        <h2>Preview</h2>
+        <iframe id="previewFrame" sandbox="allow-scripts allow-same-origin"></iframe>
+      </section>
+    </main>
+
+    <script type="module" src="resolver.js"></script>
+  </body>
+</html>
