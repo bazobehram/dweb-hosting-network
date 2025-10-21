@@ -894,6 +894,13 @@ bindDomainBtn?.addEventListener('click', async () => {
   const domain = modalDomainInput?.value.trim();
   if (!domain) return;
   
+  if (!authState || !authState.ownerId) {
+    alert('Please authenticate first (Click "Continue as guest" in the welcome screen)');
+    hidePublishModal();
+    showAuthOverlay();
+    return;
+  }
+  
   const fullDomain = `${domain}.dweb`;
   
   try {
@@ -901,19 +908,11 @@ bindDomainBtn?.addEventListener('click', async () => {
     
     const reservePayload = {
       domain: fullDomain,
-      ownerPubKey: authState?.ownerId || 'guest',
-      status: 'reserved',
-      timestamp: new Date().toISOString()
+      owner: authState.ownerId,
+      manifestId: currentPublishManifest.manifestId
     };
     
     await registryClient.registerDomain(reservePayload);
-    
-    const bindPayload = {
-      manifestId: currentPublishManifest.manifestId,
-      status: 'bound'
-    };
-    
-    await registryClient.updateDomainBinding(fullDomain, bindPayload);
     
     currentPublishManifest.domain = fullDomain;
     publishedApps.push(currentPublishManifest);
@@ -967,11 +966,16 @@ addDomainBtn?.addEventListener('click', async () => {
       return;
     }
     
+    if (!lastManifestRecord || !lastManifestRecord.manifestId) {
+      alert('No manifest available. Publish an app first.');
+      addDomainBtn.disabled = false;
+      return;
+    }
+    
     const payload = {
       domain,
-      ownerPubKey: authState.ownerId,
-      status: 'reserved',
-      timestamp: new Date().toISOString()
+      owner: authState.ownerId,
+      manifestId: lastManifestRecord.manifestId
     };
     
     await registryClient.registerDomain(payload);
