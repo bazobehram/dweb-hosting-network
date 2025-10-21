@@ -70,6 +70,10 @@ const HEALTH_SCORING_TOGGLE_STORAGE_KEY = 'dweb-health-scoring-toggle';
 const E2E_AUTORUN_TOGGLE_STORAGE_KEY = 'dweb-e2e-autorun-toggle';
 const REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY = 'dweb-registry-fallback-toggle';
 
+let telemetry = null;
+let registryClient = null;
+let chunkManager = null;
+
 if (domainBindStatus) {
   domainBindStatus.textContent = 'No domain bound';
 }
@@ -633,13 +637,6 @@ function handleReplicationAck(message) {
   }
 }
 
-if (connectionManager) {
-  connectionManager.on?.('message', (msg) => {
-    if (msg.type === 'replication-ack') {
-      handleReplicationAck(msg);
-    }
-  });
-}
 
 const domainSearchInput = document.getElementById('domainSearchInput');
 const addDomainBtn = document.getElementById('addDomainBtn');
@@ -763,7 +760,7 @@ if (registryUrlInput && !registryUrlInput.value) {
   registryUrlInput.value = DEFAULT_REGISTRY_URL;
 }
 
-const chunkManager = new ChunkManager();
+chunkManager = new ChunkManager();
 let storedRegistryApiKey = loadRegistryApiKey();
 if (!storedRegistryApiKey && DEFAULT_REGISTRY_API_KEY) {
   storedRegistryApiKey = DEFAULT_REGISTRY_API_KEY;
@@ -779,7 +776,7 @@ if (!storedStorageApiKey && DEFAULT_STORAGE_API_KEY) {
   storedStorageApiKey = DEFAULT_STORAGE_API_KEY;
   persistStorageApiKey(storedStorageApiKey);
 }
-const registryClient = new RegistryClient(registryUrlInput.value || DEFAULT_REGISTRY_URL, {
+registryClient = new RegistryClient(registryUrlInput.value || DEFAULT_REGISTRY_URL, {
   apiKey: storedRegistryApiKey
 });
 const chunkCache = new Map();
@@ -791,7 +788,7 @@ if (!rawStorageServiceUrl) {
   persistStorageServiceUrl(storageServiceUrl);
 }
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
-const telemetry = new TelemetryClient({ component: 'panel' });
+telemetry = new TelemetryClient({ component: 'panel' });
 const PERSISTENCE_DEFAULTS = {
   storeChunkData: false,
   uploadChunksToStorage: false
@@ -1146,6 +1143,16 @@ let incomingTransfer = null;
 let lastManifestRecord = null;
 const pendingPeerRequests = new Map();
 const replicationManager = createReplicationManager();
+
+function setupReplicationAckListener() {
+  if (connectionManager) {
+    connectionManager.on?.('message', (msg) => {
+      if (msg.type === 'replication-ack') {
+        handleReplicationAck(msg);
+      }
+    });
+  }
+}
 setReplicationUpdateHandler((snapshot) => renderReplicationStatus(snapshot));
 let maxReplicaTargets = DEFAULT_MAX_REPLICA_TARGETS;
 let autoReplicaSelection = true;
@@ -1476,6 +1483,8 @@ function registerManagerEvents(manager) {
       refreshPeersTable();
     }
   });
+  
+  setupReplicationAckListener();
   
   manager.on('state-change', (state) => {
     const payload = event.detail;
