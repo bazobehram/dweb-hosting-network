@@ -7,6 +7,70 @@
     <link rel="stylesheet" href="panel.css" />
   </head>
   <body>
+    <div id="publishModal" class="modal-overlay hidden">
+      <div class="modal-content publish-modal">
+        <button class="modal-close" id="closePublishModal">&times;</button>
+        
+        <div id="publishStep1" class="publish-step-view active">
+          <h2>Publish Application</h2>
+          <p class="modal-subtitle">Step 1: Select your app folder</p>
+          
+          <div class="folder-picker">
+            <input id="publishFolderInput" type="file" webkitdirectory directory multiple style="display:none;" />
+            <button id="selectFolderBtn" class="folder-picker-btn">
+              <span class="folder-icon">📁</span>
+              <span>Choose Folder</span>
+            </button>
+            <p id="selectedFolderName" class="selected-folder-hint">No folder selected</p>
+          </div>
+          
+          <div class="modal-actions">
+            <button id="cancelPublishBtn" class="secondary">Cancel</button>
+            <button id="startPublishBtn" class="primary" disabled>Next</button>
+          </div>
+        </div>
+        
+        <div id="publishStep2" class="publish-step-view">
+          <h2>Publishing...</h2>
+          <div class="progress-container">
+            <div class="progress-step">
+              <span class="progress-icon" id="progressIcon1">⏳</span>
+              <span id="progressText1">Preparing manifest...</span>
+            </div>
+            <div class="progress-step">
+              <span class="progress-icon" id="progressIcon2">⏳</span>
+              <span id="progressText2">Replicating to network...</span>
+              <span id="progressPeers" class="progress-sub">0/3 peers</span>
+            </div>
+            <div class="progress-step">
+              <span class="progress-icon" id="progressIcon3">⏳</span>
+              <span id="progressText3">Registering manifest...</span>
+            </div>
+          </div>
+        </div>
+        
+        <div id="publishStep3" class="publish-step-view">
+          <h2>Almost Done!</h2>
+          <p class="modal-subtitle">Bind your app to a .dweb domain</p>
+          
+          <div class="domain-bind-form">
+            <label for="modalDomainInput">Domain name</label>
+            <div class="domain-input-group">
+              <input id="modalDomainInput" type="text" placeholder="myapp" />
+              <span class="domain-suffix">.dweb</span>
+              <button id="checkDomainBtn" class="secondary small">Check</button>
+            </div>
+            <p id="domainAvailability" class="domain-hint"></p>
+          </div>
+          
+          <div class="modal-actions">
+            <button id="skipDomainBtn" class="secondary">Skip for Now</button>
+            <button id="bindDomainBtn" class="primary" disabled>Bind & Finish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="authOverlay" class="auth-overlay hidden">
       <div class="auth-modal">
         <h1>Welcome to DWeb</h1>
@@ -67,65 +131,57 @@
         </header>
 
         <section id="view-dashboard" class="view active">
-          <div class="grid two">
-            <div class="card status-card">
-              <header>
-                <h3>Connection Status</h3>
-                <button id="connectBtn" class="primary small">Connect</button>
-              </header>
-              <div class="form-grid">
-                <label for="signalingUrl">Signaling Server URL</label>
-                <input id="signalingUrl" type="text" value="ws://34.107.74.70:8787" />
+          <div class="dashboard-hero">
+            <button id="publishNewAppBtn" class="publish-hero-btn">
+              <span class="hero-icon">📤</span>
+              <span class="hero-text">Publish New Application</span>
+            </button>
+          </div>
 
-                <label for="signalingAuthToken">Signaling Shared Secret</label>
-                <input
-                  id="signalingAuthToken"
-                  type="password"
-                  placeholder="Leave blank if signaling is public"
-                  value="choose-a-strong-secret"
-                />
-
-                <label for="peerId">Peer ID (optional)</label>
-                <input
-                  id="peerId"
-                  type="text"
-                  placeholder="Leave empty to auto-generate"
-                />
+          <div class="card">
+            <header>
+              <h3>Your Applications</h3>
+            </header>
+            <div id="appsList" class="apps-list">
+              <div class="empty-state">
+                <p class="empty-icon">📦</p>
+                <p class="empty-text">No apps yet</p>
+                <p class="empty-hint">Click "Publish New Application" to get started!</p>
               </div>
-              <div id="statusLog" class="log"></div>
-            </div>
-
-            <div class="card channel-card">
-              <header>
-                <h3>Data Channel</h3>
-                <p id="channelStatus" class="pill">Channel closed</p>
-              </header>
-
-              <div class="channel-actions">
-                <label for="messageInput">Message</label>
-                <div class="channel-send">
-                  <input
-                    id="messageInput"
-                    type="text"
-                    placeholder="Type message to send"
-                    disabled
-                  />
-                  <button id="sendMessageBtn" disabled>Send</button>
-                </div>
-              </div>
-
-              <div class="file-transfer">
-                <label for="fileInput">Select file</label>
-                <div class="file-send">
-                  <input id="fileInput" type="file" disabled />
-                  <button id="sendFileBtn" disabled>Send File</button>
-                </div>
-              </div>
-
-              <div id="channelLog" class="log"></div>
-              <div id="downloadArea" class="download-area"></div>
             </div>
           </div>
+
+          <details class="developer-section">
+            <summary>Developer Tools</summary>
+            <div class="dev-tools-content">
+              <div class="card">
+                <header>
+                  <h3>Connection Status</h3>
+                  <button id="connectBtn" class="primary small">Connect</button>
+                </header>
+                <div class="form-grid">
+                  <label for="signalingUrl">Signaling Server URL</label>
+                  <input id="signalingUrl" type="text" value="ws://34.107.74.70:8787" />
+
+                  <label for="signalingAuthToken">Signaling Shared Secret</label>
+                  <input
+                    id="signalingAuthToken"
+                    type="password"
+                    placeholder="Leave blank if signaling is public"
+                    value="choose-a-strong-secret"
+                  />
+
+                  <label for="peerId">Peer ID (optional)</label>
+                  <input
+                    id="peerId"
+                    type="text"
+                    placeholder="Leave empty to auto-generate"
+                  />
+                </div>
+                <div id="statusLog" class="log"></div>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section id="view-publish" class="view">

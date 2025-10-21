@@ -634,9 +634,316 @@ function handleReplicationAck(message) {
 }
 
 
+const publishNewAppBtn = document.getElementById('publishNewAppBtn');
+const publishModal = document.getElementById('publishModal');
+const closePublishModal = document.getElementById('closePublishModal');
+const publishFolderInput = document.getElementById('publishFolderInput');
+const selectFolderBtn = document.getElementById('selectFolderBtn');
+const selectedFolderName = document.getElementById('selectedFolderName');
+const startPublishBtn = document.getElementById('startPublishBtn');
+const cancelPublishBtn = document.getElementById('cancelPublishBtn');
+const modalDomainInput = document.getElementById('modalDomainInput');
+const checkDomainBtn = document.getElementById('checkDomainBtn');
+const bindDomainBtn = document.getElementById('bindDomainBtn');
+const skipDomainBtn = document.getElementById('skipDomainBtn');
+const domainAvailability = document.getElementById('domainAvailability');
+const appsList = document.getElementById('appsList');
+
 const domainSearchInput = document.getElementById('domainSearchInput');
 const addDomainBtn = document.getElementById('addDomainBtn');
 const refreshDomainsBtn = document.getElementById('refreshDomainsBtn');
+
+let publishedApps = [];
+let selectedFolder = null;
+let currentPublishManifest = null;
+
+function loadAppsFromStorage() {
+  try {
+    const raw = window.localStorage.getItem('dweb-published-apps');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAppsToStorage(apps) {
+  try {
+    window.localStorage.setItem('dweb-published-apps', JSON.stringify(apps));
+  } catch {
+    // ignore
+  }
+}
+
+function renderAppsList() {
+  if (!appsList) return;
+  
+  if (publishedApps.length === 0) {
+    appsList.innerHTML = `
+      <div class="empty-state">
+        <p class="empty-icon">📦</p>
+        <p class="empty-text">No apps yet</p>
+        <p class="empty-hint">Click "Publish New Application" to get started!</p>
+      </div>
+    `;
+    return;
+  }
+  
+  appsList.innerHTML = '';
+  publishedApps.forEach((app) => {
+    const item = document.createElement('div');
+    item.className = 'app-item';
+    
+    const domainDisplay = app.domain ? `🌐 ${app.domain}` : '📦 Unnamed App';
+    const domainClass = app.domain ? '' : 'no-domain';
+    
+    const timeSince = Math.floor((Date.now() - app.publishedAt) / 1000 / 60);
+    const timeText = timeSince < 60 ? `${timeSince}m ago` : `${Math.floor(timeSince / 60)}h ago`;
+    
+    item.innerHTML = `
+      <div class="app-info">
+        <div class="app-name ${domainClass}">${escapeHtml(domainDisplay)}</div>
+        <div class="app-meta">
+          <span>Published ${timeText}</span>
+          <span>${app.chunks || 0} chunks</span>
+          <span>${app.peerCount || 0} peers</span>
+        </div>
+      </div>
+      <div class="app-actions">
+        ${app.domain ? `<button class="secondary small" onclick="openAppDomain('${escapeHtml(app.domain)}')">Open</button>` : `<button class="secondary small" onclick="bindAppDomain('${escapeHtml(app.manifestId)}')">Bind Domain</button>`}
+        <button class="secondary small" onclick="removeApp('${escapeHtml(app.manifestId)}')">⚙️</button>
+      </div>
+    `;
+    
+    appsList.appendChild(item);
+  });
+}
+
+window.openAppDomain = function(domain) {
+  const url = chrome.runtime.getURL(`resolver/index.html?domain=${encodeURIComponent(domain)}`);
+  chrome.tabs.create({ url });
+};
+
+window.bindAppDomain = function(manifestId) {
+  const app = publishedApps.find(a => a.manifestId === manifestId);
+  if (app) {
+    currentPublishManifest = app;
+    showPublishStep(3);
+    showPublishModal();
+  }
+};
+
+window.removeApp = function(manifestId) {
+  if (!confirm('Remove this app?')) return;
+  publishedApps = publishedApps.filter(a => a.manifestId !== manifestId);
+  saveAppsToStorage(publishedApps);
+  renderAppsList();
+};
+
+function showPublishModal() {
+  publishModal?.classList.remove('hidden');
+}
+
+function hidePublishModal() {
+  publishModal?.classList.add('hidden');
+  resetPublishModal();
+}
+
+function resetPublishModal() {
+  showPublishStep(1);
+  selectedFolder = null;
+  if (selectedFolderName) selectedFolderName.textContent = 'No folder selected';
+  if (startPublishBtn) startPublishBtn.disabled = true;
+  if (modalDomainInput) modalDomainInput.value = '';
+  if (domainAvailability) domainAvailability.textContent = '';
+  if (bindDomainBtn) bindDomainBtn.disabled = true;
+}
+
+function showPublishStep(step) {
+  document.querySelectorAll('.publish-step-view').forEach((el, i) => {
+    el.classList.toggle('active', i + 1 === step);
+  });
+}
+
+publishedApps = loadAppsFromStorage();
+renderAppsList();
+
+publishNewAppBtn?.addEventListener('click', () => {
+  showPublishModal();
+});
+
+closePublishModal?.addEventListener('click', hidePublishModal);
+cancelPublishBtn?.addEventListener('click', hidePublishModal);
+
+selectFolderBtn?.addEventListener('click', () => {
+  publishFolderInput?.click();
+});
+
+publishFolderInput?.addEventListener('change', () => {
+  const files = publishFolderInput.files;
+  if (!files || files.length === 0) {
+    selectedFolder = null;
+    selectedFolderName.textContent = 'No folder selected';
+    startPublishBtn.disabled = true;
+    return;
+  }
+  
+  selectedFolder = files;
+  const folderName = files[0].webkitRelativePath.split('/')[0] || 'Selected folder';
+  selectedFolderName.textContent = `${folderName} (${files.length} files)`;
+  startPublishBtn.disabled = false;
+});
+
+startPublishBtn?.addEventListener('click', async () => {
+  if (!selectedFolder) return;
+  
+  showPublishStep(2);
+  
+  try {
+    const files = Array.from(selectedFolder);
+    const firstFile = files[0];
+    
+    document.getElementById('progressIcon1').textContent = '⏳';
+    document.getElementById('progressText1').textContent = 'Preparing manifest...';
+    
+    const { manifest, transfer } = await chunkManager.prepareTransfer(firstFile);
+    
+    document.getElementById('progressIcon1').textContent = '✓';
+    document.getElementById('progressText1').textContent = 'Manifest created';
+    
+    currentPublishManifest = {
+      manifestId: manifest.transferId,
+      fileName: firstFile.name,
+      chunks: transfer.totalChunks,
+      publishedAt: Date.now(),
+      peerCount: 0
+    };
+    
+    document.getElementById('progressIcon2').textContent = '⏳';
+    document.getElementById('progressText2').textContent = 'Replicating to network...';
+    
+    if (connectionManager && peers && peers.length > 0) {
+      const targetPeers = peers.slice(0, 3);
+      for (const peer of targetPeers) {
+        connectionManager.sendJson({
+          type: 'replication-request',
+          manifestId: manifest.transferId,
+          manifest,
+          timestamp: Date.now()
+        }, peer.peerId);
+      }
+      currentPublishManifest.peerCount = targetPeers.length;
+      document.getElementById('progressPeers').textContent = `${targetPeers.length}/3 peers`;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    document.getElementById('progressIcon2').textContent = '✓';
+    document.getElementById('progressText2').textContent = 'Replicated';
+    
+    document.getElementById('progressIcon3').textContent = '⏳';
+    document.getElementById('progressText3').textContent = 'Registering manifest...';
+    
+    await registerManifestWithRegistry(manifest);
+    
+    document.getElementById('progressIcon3').textContent = '✓';
+    document.getElementById('progressText3').textContent = 'Registered';
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    showPublishStep(3);
+    
+  } catch (error) {
+    alert(`Publish failed: ${error.message || error}`);
+    hidePublishModal();
+  }
+});
+
+checkDomainBtn?.addEventListener('click', async () => {
+  const domain = modalDomainInput?.value.trim();
+  if (!domain) return;
+  
+  const fullDomain = `${domain}.dweb`;
+  
+  try {
+    checkDomainBtn.disabled = true;
+    checkDomainBtn.textContent = '...';
+    
+    const existing = await registryClient.getDomain(fullDomain);
+    
+    if (existing) {
+      domainAvailability.textContent = `${fullDomain} is already taken`;
+      domainAvailability.className = 'domain-hint taken';
+      bindDomainBtn.disabled = true;
+    } else {
+      domainAvailability.textContent = `${fullDomain} is available!`;
+      domainAvailability.className = 'domain-hint available';
+      bindDomainBtn.disabled = false;
+    }
+  } catch (error) {
+    domainAvailability.textContent = 'Check failed';
+    domainAvailability.className = 'domain-hint';
+  } finally {
+    checkDomainBtn.disabled = false;
+    checkDomainBtn.textContent = 'Check';
+  }
+});
+
+bindDomainBtn?.addEventListener('click', async () => {
+  if (!currentPublishManifest) return;
+  
+  const domain = modalDomainInput?.value.trim();
+  if (!domain) return;
+  
+  const fullDomain = `${domain}.dweb`;
+  
+  try {
+    bindDomainBtn.disabled = true;
+    
+    const reservePayload = {
+      domain: fullDomain,
+      ownerPubKey: authState?.ownerId || 'guest',
+      status: 'reserved',
+      timestamp: new Date().toISOString()
+    };
+    
+    await registryClient.registerDomain(reservePayload);
+    
+    const bindPayload = {
+      manifestId: currentPublishManifest.manifestId,
+      status: 'bound'
+    };
+    
+    await registryClient.updateDomainBinding(fullDomain, bindPayload);
+    
+    currentPublishManifest.domain = fullDomain;
+    publishedApps.push(currentPublishManifest);
+    saveAppsToStorage(publishedApps);
+    renderAppsList();
+    
+    hidePublishModal();
+    
+    telemetry.emit('domain.bound', {
+      domain: fullDomain,
+      manifestId: currentPublishManifest.manifestId,
+      owner: authState?.ownerId || 'guest',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    alert(`Binding failed: ${error.message || error}`);
+  } finally {
+    bindDomainBtn.disabled = false;
+  }
+});
+
+skipDomainBtn?.addEventListener('click', () => {
+  if (currentPublishManifest) {
+    publishedApps.push(currentPublishManifest);
+    saveAppsToStorage(publishedApps);
+    renderAppsList();
+  }
+  hidePublishModal();
+});
 
 addDomainBtn?.addEventListener('click', async () => {
   const domain = domainSearchInput?.value.trim();
