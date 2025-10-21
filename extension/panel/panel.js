@@ -261,22 +261,16 @@ async function refreshPeersTable() {
   const peerTableBody = document.getElementById('peerTableBody');
   if (!peerTableBody) return;
   
-  if (!connectionManager || !connectionManager.peers) {
+  if (!connectionManager || !peers || peers.length === 0) {
     peerTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Not connected</td></tr>';
     return;
   }
   
   peerTableBody.innerHTML = '';
-  const peers = Array.from(connectionManager.peers.keys());
-  if (peers.length === 0) {
-    peerTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No peers</td></tr>';
-    return;
-  }
-  
-  peers.forEach((peerId) => {
+  peers.forEach((peer) => {
     const row = peerTableBody.insertRow();
     row.innerHTML = `
-      <td>${escapeHtml(peerId)}</td>
+      <td>${escapeHtml(peer.peerId)}</td>
       <td>—</td>
       <td>—</td>
       <td>—</td>
@@ -556,19 +550,21 @@ startReplicationBtn?.addEventListener('click', async () => {
     return;
   }
   
+  if (!peers || peers.length === 0) {
+    appendRegistryLog('No peers available for replication');
+    return;
+  }
+  
   startReplicationBtn.disabled = true;
   replicationProgressPill.textContent = 'Replicating...';
   replicationState = { acks: 0, target: 3, peers: [] };
   
   try {
-    const peers = Array.from(connectionManager.peers.keys()).slice(0, 3);
-    if (peers.length === 0) {
-      throw new Error('No peers available');
-    }
+    const targetPeers = peers.slice(0, 3);
+    replicationProgress.innerHTML = `<p>Sending to ${targetPeers.length} peer(s)...</p>`;
     
-    replicationProgress.innerHTML = `<p>Sending to ${peers.length} peer(s)...</p>`;
-    
-    for (const peerId of peers) {
+    for (const peer of targetPeers) {
+      const peerId = peer.peerId;
       connectionManager.sendJson({
         type: 'replication-request',
         manifestId: currentManifest.transferId,
@@ -1146,9 +1142,16 @@ const replicationManager = createReplicationManager();
 
 function setupReplicationAckListener() {
   if (connectionManager) {
-    connectionManager.on?.('message', (msg) => {
-      if (msg.type === 'replication-ack') {
-        handleReplicationAck(msg);
+    connectionManager.addEventListener('channel-message', (event) => {
+      if (event.detail.kind === 'text') {
+        try {
+          const msg = JSON.parse(event.detail.data);
+          if (msg.type === 'replication-ack') {
+            handleReplicationAck(msg);
+          }
+        } catch {
+          // ignore parse errors
+        }
       }
     });
   }
@@ -1477,16 +1480,9 @@ registerDomainBtn.addEventListener('click', async () => {
 });
 
 function registerManagerEvents(manager) {
-  manager.on('peer-roster', () => {
-    const activeView = document.querySelector('.view.active')?.id;
-    if (activeView === 'view-peers') {
-      refreshPeersTable();
-    }
-  });
-  
   setupReplicationAckListener();
   
-  manager.on('state-change', (state) => {
+  manager.addEventListener('registered', (event) => {
     const payload = event.detail;
     localPeerId = payload.peerId;
     telemetry.setContext('peerId', localPeerId);
