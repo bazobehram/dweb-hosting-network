@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DWeb Hosting</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DWeb Resolver</h1>
+        <span id="statusBadge" class="badge badge-unknown">Status: Unknown</span>
+      </header>
+
+      <form id="resolveForm">
+        <label for="domainInput">Domain</label>
+        <div class="resolver-input">
+          <input
+            id="domainInput"
+            type="text"
+            placeholder="example.dweb"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="primary">Open</button>
+        </div>
+      </form>
+
+      <section class="actions">
+        <button id="openPanelBtn" class="secondary">Open Panel</button>
+      </section>
+    </main>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
+

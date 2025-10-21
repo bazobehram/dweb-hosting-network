@@ -62,6 +62,19 @@ export class RegistryClient {
     return response.json();
   }
 
+  async listDomains() {
+    const response = await fetch(`${this.baseUrl}/domains`, {
+      headers: this.withAuthHeaders({ Accept: 'application/json' })
+    });
+
+    if (!response.ok) {
+      const error = await safeJson(response);
+      throw new Error(error?.error ?? `Failed to list domains (${response.status})`);
+    }
+
+    return response.json();
+  }
+
   async getDomain(domain) {
     const response = await fetch(`${this.baseUrl}/domains/${encodeURIComponent(domain)}`, {
       headers: this.withAuthHeaders({ Accept: 'application/json' })
@@ -150,6 +163,19 @@ export class RegistryClient {
     if (!response.ok) {
       const error = await safeJson(response);
       throw new Error(error?.error ?? `Pointer update failed (${response.status})`);
+    }
+    return response.json();
+  }
+
+  async updateDomainBinding(domain, payload) {
+    const response = await fetch(`${this.baseUrl}/domains/${encodeURIComponent(domain)}`, {
+      method: 'PATCH',
+      headers: this.withAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      const error = await safeJson(response);
+      throw new Error(error?.error ?? `Domain binding update failed (${response.status})`);
     }
     return response.json();
   }

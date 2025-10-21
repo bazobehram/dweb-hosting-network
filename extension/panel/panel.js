@@ -3,6 +3,20 @@ import { ChunkManager } from '../scripts/webrtc/chunkManager.js';
 import { RegistryClient } from '../scripts/api/registryClient.js';
 import { TelemetryClient } from '../scripts/telemetry/telemetryClient.js';
 
+const navButtons = document.querySelectorAll('.nav-item');
+const views = document.querySelectorAll('.view');
+const sidebarStatusBadge = document.getElementById('sidebarStatusBadge');
+const sidebarOwnerId = document.getElementById('sidebarOwnerId');
+const openResolverFromSidebar = document.getElementById('openResolverFromSidebar');
+const authOverlay = document.getElementById('authOverlay');
+const authGuestBtn = document.getElementById('authGuestBtn');
+const authPasskeyBtn = document.getElementById('authPasskeyBtn');
+const authMagicLinkBtn = document.getElementById('authMagicLinkBtn');
+
+const VIEW_STORAGE_KEY = 'dweb-panel-active-view';
+const AUTH_STORAGE_KEY = 'dweb-auth-state';
+const STATUS_STORAGE_KEY = 'lastLoadStatus';
+
 const signalingInput = document.getElementById('signalingUrl');
 const peerIdInput = document.getElementById('peerId');
 const signalingAuthTokenInput = document.getElementById('signalingAuthToken');
@@ -35,12 +49,705 @@ const resetReplicationSettingsBtn = document.getElementById('resetReplicationSet
 const storageServiceUrlInput = document.getElementById('storageServiceUrl');
 const inlineRegistryDataToggle = document.getElementById('inlineRegistryDataToggle');
 const storageFallbackToggle = document.getElementById('storageFallbackToggle');
+const peerTableBody = document.getElementById('peerTableBody');
+const peerAutoSelectToggle = document.getElementById('peerAutoSelectToggle');
+const selectionLogContainer = document.getElementById('selectionLogContainer');
+const selectionExportJson = document.getElementById('selectionExportJson');
+const selectionExportCsv = document.getElementById('selectionExportCsv');
+const togglePeerFirst = document.getElementById('togglePeerFirst');
+const toggleHealthScoring = document.getElementById('toggleHealthScoring');
+const toggleE2EAuto = document.getElementById('toggleE2EAuto');
+const toggleRegistryFallback = document.getElementById('toggleRegistryFallback');
+const domainBindStatus = document.getElementById('domainBindStatus');
 const REPLICATION_STORAGE_KEY = 'dweb-replication-settings';
 const REGISTRY_API_KEY_STORAGE_KEY = 'dweb-registry-api-key';
 const SIGNALING_AUTH_STORAGE_KEY = 'dweb-signaling-auth-token';
 const STORAGE_API_KEY_STORAGE_KEY = 'dweb-storage-api-key';
 const STORAGE_SERVICE_URL_STORAGE_KEY = 'dweb-storage-service-url';
 const PERSISTENCE_SETTINGS_STORAGE_KEY = 'dweb-persistence-settings';
+const PEER_FIRST_TOGGLE_STORAGE_KEY = 'dweb-peer-first-toggle';
+const HEALTH_SCORING_TOGGLE_STORAGE_KEY = 'dweb-health-scoring-toggle';
+const E2E_AUTORUN_TOGGLE_STORAGE_KEY = 'dweb-e2e-autorun-toggle';
+const REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY = 'dweb-registry-fallback-toggle';
+
+if (domainBindStatus) {
+  domainBindStatus.textContent = 'No domain bound';
+}
+
+function generateOwnerId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `guest-${crypto.randomUUID().slice(0, 8)}`;
+  }
+  return `guest-${Date.now().toString(36)}`;
+}
+
+function loadAuthState() {
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistAuthState(state) {
+  try {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+}
+
+function updateOwnerBadge(ownerId) {
+  if (sidebarOwnerId) {
+    sidebarOwnerId.textContent = ownerId ? `Owner: ${ownerId}` : 'Owner: —';
+  }
+  if (ownerInput && ownerId && ownerInput.value !== ownerId) {
+    ownerInput.value = ownerId;
+  }
+}
+
+function hideAuthOverlay() {
+  authOverlay?.classList.add('hidden');
+}
+
+function showAuthOverlay() {
+  authOverlay?.classList.remove('hidden');
+}
+
+let authState = loadAuthState();
+if (authState?.ownerId) {
+  updateOwnerBadge(authState.ownerId);
+  hideAuthOverlay();
+} else {
+  showAuthOverlay();
+}
+
+authGuestBtn?.addEventListener('click', () => {
+  const ownerId = generateOwnerId();
+  authState = { method: 'guest', ownerId, authenticatedAt: Date.now() };
+  persistAuthState(authState);
+  updateOwnerBadge(ownerId);
+  hideAuthOverlay();
+});
+
+authPasskeyBtn?.addEventListener('click', () => {
+  const ownerId = authState?.ownerId ?? generateOwnerId();
+  authState = { method: 'passkey', ownerId, authenticatedAt: Date.now() };
+  persistAuthState(authState);
+  updateOwnerBadge(ownerId);
+  hideAuthOverlay();
+});
+
+authMagicLinkBtn?.addEventListener('click', () => {
+  const ownerId = authState?.ownerId ?? generateOwnerId();
+  authState = { method: 'magic-link', ownerId, authenticatedAt: Date.now() };
+  persistAuthState(authState);
+  updateOwnerBadge(ownerId);
+  hideAuthOverlay();
+});
+
+ownerInput?.addEventListener('change', () => {
+  const value = ownerInput.value.trim();
+  if (!value) return;
+  authState = { ...(authState ?? {}), ownerId: value, updatedAt: Date.now() };
+  persistAuthState(authState);
+  updateOwnerBadge(value);
+});
+
+function setSidebarStatus(status, { persist = true } = {}) {
+  const normalized = (status ?? 'unknown').toLowerCase();
+  sidebarStatusBadge?.classList.remove('status-peer', 'status-relay', 'status-fallback', 'status-unknown');
+  switch (normalized) {
+    case 'peer':
+      sidebarStatusBadge?.classList.add('status-peer');
+      sidebarStatusBadge.textContent = 'Peer';
+      break;
+    case 'relay':
+      sidebarStatusBadge?.classList.add('status-relay');
+      sidebarStatusBadge.textContent = 'Relay';
+      break;
+    case 'fallback':
+      sidebarStatusBadge?.classList.add('status-fallback');
+      sidebarStatusBadge.textContent = 'Fallback';
+      break;
+  default:
+      sidebarStatusBadge?.classList.add('status-unknown');
+      sidebarStatusBadge.textContent = 'Unknown';
+      break;
+  }
+  if (persist && chrome?.storage?.local) {
+    chrome.storage.local.set({ [STATUS_STORAGE_KEY]: normalized }, () => {
+      // ignore errors
+    });
+  }
+}
+
+openResolverFromSidebar?.addEventListener('click', () => {
+  const url = chrome.runtime.getURL('resolver/index.html');
+  chrome.tabs.create({ url });
+});
+
+async function refreshDashboardMetrics() {
+  const directRatioCard = document.getElementById('metricDirectRate');
+  const ttfbP50Card = document.getElementById('metricTtfb');
+  const replicationSuccessCard = document.getElementById('metricReplication');
+  const e2eStatusCard = document.getElementById('metricE2ERun');
+  
+  if (!telemetry || !telemetry.endpoint) {
+    if (directRatioCard) directRatioCard.textContent = '—';
+    if (ttfbP50Card) ttfbP50Card.textContent = '—';
+    if (replicationSuccessCard) replicationSuccessCard.textContent = '—';
+    if (e2eStatusCard) e2eStatusCard.textContent = 'No telemetry';
+    return;
+  }
+  
+  try {
+    const base = telemetry.endpoint.replace(/\/[^\/]*$/, '');
+    const metricsUrl = `${base}/reports/metrics/summary?hours=24`;
+    const response = await fetch(metricsUrl, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`Metrics fetch failed: ${response.status}`);
+    
+    const data = await response.json();
+    if (directRatioCard && typeof data.directRatio === 'number') {
+      directRatioCard.textContent = `${Math.round(data.directRatio * 100)}%`;
+    }
+    if (ttfbP50Card && typeof data.ttfbP50 === 'number') {
+      ttfbP50Card.textContent = `${Math.round(data.ttfbP50)} ms`;
+    }
+    if (replicationSuccessCard && typeof data.replicationSuccess === 'number') {
+      replicationSuccessCard.textContent = `${Math.round(data.replicationSuccess * 100)}%`;
+    }
+    if (e2eStatusCard && data.latestE2E) {
+      e2eStatusCard.textContent = data.latestE2E.status ?? 'Unknown';
+    }
+  } catch (error) {
+    if (typeof console !== 'undefined') console.warn('[metrics]', error);
+  }
+}
+
+async function refreshDomainsList() {
+  const domainsTableBody = document.getElementById('domainsTableBody');
+  if (!domainsTableBody) return;
+  
+  try {
+    const list = await registryClient.listDomains();
+    domainsTableBody.innerHTML = '';
+    
+    if (!list || !Array.isArray(list.domains) || list.domains.length === 0) {
+      domainsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No domains found</td></tr>';
+      return;
+    }
+    
+    list.domains.forEach((domain) => {
+      const row = domainsTableBody.insertRow();
+      row.innerHTML = `
+        <td>${escapeHtml(domain.domain ?? '—')}</td>
+        <td>${escapeHtml(domain.manifestId ?? 'Unbound')}</td>
+        <td><span class="status-badge status-${domain.status ?? 'unknown'}">${domain.status ?? 'unknown'}</span></td>
+        <td><button class="small-btn" data-domain="${escapeHtml(domain.domain ?? '')}" onclick="unbindDomain(this)">Unbind</button></td>
+      `;
+    });
+  } catch (error) {
+    domainsTableBody.innerHTML = `<tr><td colspan="4" style="color:var(--danger);text-align:center;">Error: ${escapeHtml(error.message ?? error)}</td></tr>`;
+  }
+}
+
+async function refreshPeersTable() {
+  const peerTableBody = document.getElementById('peerTableBody');
+  if (!peerTableBody) return;
+  
+  if (!connectionManager || !connectionManager.peers) {
+    peerTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Not connected</td></tr>';
+    return;
+  }
+  
+  peerTableBody.innerHTML = '';
+  const peers = Array.from(connectionManager.peers.keys());
+  if (peers.length === 0) {
+    peerTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No peers</td></tr>';
+    return;
+  }
+  
+  peers.forEach((peerId) => {
+    const row = peerTableBody.insertRow();
+    row.innerHTML = `
+      <td>${escapeHtml(peerId)}</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+    `;
+  });
+}
+
+function escapeHtml(unsafe) {
+  if (!unsafe) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+window.unbindDomain = async function (button) {
+  const domain = button?.dataset?.domain;
+  if (!domain) return;
+  if (!confirm(`Unbind domain ${domain}?`)) return;
+  
+  try {
+    await registryClient.updateDomainBinding(domain, { manifestId: null });
+    appendRegistryLog(`Domain ${domain} unbound`);
+    await refreshDomainsList();
+  } catch (error) {
+    appendRegistryLog(`Failed to unbind ${domain}: ${error.message ?? error}`);
+  }
+};
+
+async function fetchSelectionLog(limit = 50) {
+  if (!telemetry || !telemetry.endpoint) return [];
+  
+  try {
+    const base = telemetry.endpoint.replace(/\/[^\/]*$/, '');
+    const logUrl = `${base}/telemetry/selection-log?limit=${limit}`;
+    const response = await fetch(logUrl, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`Selection log fetch failed: ${response.status}`);
+    
+    const data = await response.json();
+    return Array.isArray(data.log) ? data.log : [];
+  } catch (error) {
+    if (typeof console !== 'undefined') console.warn('[selection-log]', error);
+    return [];
+  }
+}
+
+async function refreshActivityView() {
+  const logContainer = document.getElementById('selectionLogContainer');
+  if (!logContainer) return;
+  
+  const log = await fetchSelectionLog(50);
+  logContainer.innerHTML = '';
+  
+  if (log.length === 0) {
+    logContainer.innerHTML = '<p style="color:var(--text-muted);text-align:center;">No selection records</p>';
+    return;
+  }
+  
+  log.forEach((entry) => {
+    const item = document.createElement('div');
+    item.className = 'selection-log-item';
+    item.innerHTML = `
+      <div class="log-time">${entry.timestamp ?? '—'}</div>
+      <div class="log-component">${escapeHtml(entry.component ?? '')}</div>
+      <div class="log-chosen">Chosen: <strong>${escapeHtml(entry.chosen?.peerId ?? '—')}</strong> (score: ${entry.chosen?.score ?? '—'})</div>
+      <div class="log-reason">${escapeHtml(entry.chosen?.reason ?? '')}</div>
+    `;
+    logContainer.appendChild(item);
+  });
+}
+
+function exportSelectionLogAsJson() {
+  fetchSelectionLog(500).then((log) => {
+    const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `selection-log-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function exportSelectionLogAsCsv() {
+  fetchSelectionLog(500).then((log) => {
+    const rows = [['Timestamp', 'Component', 'Chosen Peer', 'Score', 'Reason']];
+    log.forEach((entry) => {
+      rows.push([
+        entry.timestamp ?? '',
+        entry.component ?? '',
+        entry.chosen?.peerId ?? '',
+        String(entry.chosen?.score ?? ''),
+        entry.chosen?.reason ?? ''
+      ]);
+    });
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `selection-log-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function activateView(viewId, { persist = true } = {}) {
+  const target = document.getElementById(`view-${viewId}`);
+  if (!target) return;
+  views.forEach((view) => view.classList.toggle('active', view === target));
+  navButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === viewId));
+  
+  if (viewId === 'dashboard') {
+    refreshDashboardMetrics();
+  } else if (viewId === 'domains') {
+    refreshDomainsList();
+  } else if (viewId === 'peers') {
+    refreshPeersTable();
+  } else if (viewId === 'activity') {
+    refreshActivityView();
+  }
+  
+  if (persist) {
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, viewId);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+navButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    activateView(button.dataset.view);
+  });
+});
+
+selectionExportJson?.addEventListener('click', exportSelectionLogAsJson);
+selectionExportCsv?.addEventListener('click', exportSelectionLogAsCsv);
+
+const storedView = (() => {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+})();
+
+if (storedView && document.getElementById(`view-${storedView}`)) {
+  activateView(storedView, { persist: false });
+} else {
+  activateView('dashboard', { persist: false });
+}
+
+if (chrome?.storage?.local) {
+  chrome.storage.local.get(STATUS_STORAGE_KEY, (result) => {
+    if (chrome.runtime.lastError) return;
+    if (result && result[STATUS_STORAGE_KEY]) {
+      setSidebarStatus(result[STATUS_STORAGE_KEY], { persist: false });
+    }
+  });
+} else {
+  setSidebarStatus('unknown', { persist: false });
+}
+
+function loadBooleanSetting(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBooleanSetting(key, value) {
+  try {
+    window.localStorage.setItem(key, value ? 'true' : 'false');
+  } catch {
+    // ignore
+  }
+}
+
+function initBooleanToggle(element, storageKey, defaultValue, onChange) {
+  if (!element) return;
+  const stored = loadBooleanSetting(storageKey, defaultValue);
+  element.checked = stored;
+  if (typeof onChange === 'function') {
+    onChange(stored);
+  }
+  element.addEventListener('change', () => {
+    const value = element.checked;
+    saveBooleanSetting(storageKey, value);
+    if (typeof onChange === 'function') {
+      onChange(value);
+    }
+  });
+}
+
+function notifyToggle(flag, value) {
+  try {
+    chrome.runtime.sendMessage({ type: 'panel-toggle', flag, value });
+  } catch {
+    // ignore
+  }
+}
+
+initBooleanToggle(togglePeerFirst, PEER_FIRST_TOGGLE_STORAGE_KEY, true, (value) =>
+  notifyToggle('peer-first', value)
+);
+initBooleanToggle(toggleHealthScoring, HEALTH_SCORING_TOGGLE_STORAGE_KEY, true, (value) =>
+  notifyToggle('health-scoring', value)
+);
+initBooleanToggle(toggleE2EAuto, E2E_AUTORUN_TOGGLE_STORAGE_KEY, true, (value) =>
+  notifyToggle('e2e-auto', value)
+);
+initBooleanToggle(toggleRegistryFallback, REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY, false, (value) =>
+  notifyToggle('registry-fallback', value)
+);
+
+const publishFileInput = document.getElementById('publishFileInput');
+const publishFileHint = document.getElementById('publishFileHint');
+const createManifestBtn = document.getElementById('createManifestBtn');
+const startReplicationBtn = document.getElementById('startReplicationBtn');
+const replicationProgress = document.getElementById('replicationProgress');
+const replicationProgressPill = document.getElementById('replicationProgressPill');
+
+let currentManifest = null;
+let replicationState = { acks: 0, target: 3, peers: [] };
+
+publishFileInput?.addEventListener('change', () => {
+  const files = publishFileInput.files;
+  if (!files || files.length === 0) {
+    publishFileHint.textContent = 'No file selected';
+    createManifestBtn.disabled = true;
+    return;
+  }
+  
+  const totalSize = Array.from(files).reduce((sum, f) => sum + f.size, 0);
+  publishFileHint.textContent = `${files.length} file(s), ${formatBytes(totalSize)}`;
+  createManifestBtn.disabled = false;
+  replicationProgressPill.textContent = 'Ready to create manifest';
+});
+
+createManifestBtn?.addEventListener('click', async () => {
+  const files = publishFileInput.files;
+  if (!files || files.length === 0) return;
+  
+  createManifestBtn.disabled = true;
+  replicationProgressPill.textContent = 'Creating manifest...';
+  
+  try {
+    const file = files[0];
+    const { manifest, transfer } = await chunkManager.prepareTransfer(file);
+    currentManifest = { ...manifest, transfer, fileName: file.name };
+    
+    replicationProgress.innerHTML = `
+      <p><strong>Manifest ID:</strong> ${escapeHtml(manifest.transferId)}</p>
+      <p><strong>Chunks:</strong> ${transfer.totalChunks}</p>
+      <p><strong>Size:</strong> ${formatBytes(file.size)}</p>
+    `;
+    
+    startReplicationBtn.disabled = false;
+    replicationProgressPill.textContent = 'Manifest ready';
+  } catch (error) {
+    replicationProgress.innerHTML = `<p style="color:var(--danger);">Error: ${escapeHtml(error.message ?? error)}</p>`;
+    replicationProgressPill.textContent = 'Failed';
+    createManifestBtn.disabled = false;
+  }
+});
+
+startReplicationBtn?.addEventListener('click', async () => {
+  if (!currentManifest || !connectionManager) {
+    appendRegistryLog('Connect to peers first');
+    return;
+  }
+  
+  startReplicationBtn.disabled = true;
+  replicationProgressPill.textContent = 'Replicating...';
+  replicationState = { acks: 0, target: 3, peers: [] };
+  
+  try {
+    const peers = Array.from(connectionManager.peers.keys()).slice(0, 3);
+    if (peers.length === 0) {
+      throw new Error('No peers available');
+    }
+    
+    replicationProgress.innerHTML = `<p>Sending to ${peers.length} peer(s)...</p>`;
+    
+    for (const peerId of peers) {
+      connectionManager.sendJson({
+        type: 'replication-request',
+        manifestId: currentManifest.transferId,
+        manifest: currentManifest,
+        timestamp: Date.now()
+      }, peerId);
+      replicationState.peers.push({ peerId, status: 'pending' });
+    }
+    
+    updateReplicationDisplay();
+    
+    await registerManifestWithRegistry(currentManifest);
+    appendRegistryLog(`Manifest ${currentManifest.transferId} registered`);
+    
+  } catch (error) {
+    replicationProgress.innerHTML += `<p style="color:var(--danger);">Error: ${escapeHtml(error.message ?? error)}</p>`;
+    replicationProgressPill.textContent = 'Failed';
+    startReplicationBtn.disabled = false;
+  }
+});
+
+function updateReplicationDisplay() {
+  if (!replicationProgress) return;
+  
+  const ackCount = replicationState.acks;
+  const target = replicationState.target;
+  const quorumMet = ackCount >= 2;
+  
+  let html = `<p><strong>ACKs:</strong> ${ackCount} / ${target}</p>`;
+  html += '<ul class="peer-replica-list">';
+  
+  replicationState.peers.forEach((p) => {
+    const icon = p.status === 'acked' ? '✓' : p.status === 'failed' ? '✗' : '⏳';
+    html += `<li>${icon} ${escapeHtml(p.peerId.slice(0, 12))}... (${p.status})</li>`;
+  });
+  
+  html += '</ul>';
+  
+  if (quorumMet) {
+    html += '<p style="color:var(--success);"><strong>Quorum reached!</strong> You can now bind domain.</p>';
+    replicationProgressPill.textContent = `${ackCount}/${target} ACKs ✓`;
+    registerDomainBtn.disabled = false;
+  } else {
+    html += `<p class="hint">Waiting for ${2 - ackCount} more ACK(s)...</p>`;
+    replicationProgressPill.textContent = `${ackCount}/${target} ACKs`;
+  }
+  
+  replicationProgress.innerHTML = html;
+}
+
+function handleReplicationAck(message) {
+  if (!currentManifest || message.manifestId !== currentManifest.transferId) return;
+  
+  const peer = replicationState.peers.find((p) => p.peerId === message.peerId);
+  if (peer && peer.status === 'pending') {
+    peer.status = 'acked';
+    replicationState.acks += 1;
+    updateReplicationDisplay();
+    
+    telemetry.emit('replication.chunk', {
+      manifestId: currentManifest.transferId,
+      peerId: message.peerId,
+      status: 'acked',
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+if (connectionManager) {
+  connectionManager.on?.('message', (msg) => {
+    if (msg.type === 'replication-ack') {
+      handleReplicationAck(msg);
+    }
+  });
+}
+
+const domainSearchInput = document.getElementById('domainSearchInput');
+const addDomainBtn = document.getElementById('addDomainBtn');
+const refreshDomainsBtn = document.getElementById('refreshDomainsBtn');
+
+addDomainBtn?.addEventListener('click', async () => {
+  const domain = domainSearchInput?.value.trim();
+  if (!domain) {
+    alert('Please enter a domain name');
+    return;
+  }
+  
+  if (!authState?.ownerId) {
+    alert('Please authenticate first');
+    return;
+  }
+  
+  try {
+    addDomainBtn.disabled = true;
+    const existing = await registryClient.getDomain(domain);
+    
+    if (existing) {
+      alert(`Domain ${domain} is already registered`);
+      addDomainBtn.disabled = false;
+      return;
+    }
+    
+    const payload = {
+      domain,
+      ownerPubKey: authState.ownerId,
+      status: 'reserved',
+      timestamp: new Date().toISOString()
+    };
+    
+    await registryClient.registerDomain(payload);
+    appendRegistryLog(`Domain ${domain} reserved`);
+    
+    await refreshDomainsList();
+    domainSearchInput.value = '';
+    
+  } catch (error) {
+    appendRegistryLog(`Failed to reserve domain: ${error.message ?? error}`);
+  } finally {
+    addDomainBtn.disabled = false;
+  }
+});
+
+refreshDomainsBtn?.addEventListener('click', refreshDomainsList);
+
+registerDomainBtn?.addEventListener('click', async () => {
+  const domain = domainInput?.value.trim();
+  const owner = ownerInput?.value.trim() || authState?.ownerId;
+  
+  if (!domain || !owner) {
+    appendRegistryLog('Domain and Owner are required');
+    return;
+  }
+  
+  if (!currentManifest) {
+    appendRegistryLog('Create and replicate manifest first');
+    return;
+  }
+  
+  if (replicationState.acks < 2) {
+    appendRegistryLog('Wait for quorum (≥2 ACKs) before binding');
+    return;
+  }
+  
+  try {
+    registerDomainBtn.disabled = true;
+    
+    const existing = await registryClient.getDomain(domain);
+    if (!existing) {
+      const reservePayload = {
+        domain,
+        ownerPubKey: owner,
+        status: 'reserved',
+        timestamp: new Date().toISOString()
+      };
+      await registryClient.registerDomain(reservePayload);
+      appendRegistryLog(`Domain ${domain} reserved`);
+    }
+    
+    const bindPayload = {
+      manifestId: currentManifest.transferId,
+      status: 'bound'
+    };
+    
+    await registryClient.updateDomainBinding(domain, bindPayload);
+    appendRegistryLog(`Domain ${domain} bound to ${currentManifest.transferId}`);
+    
+    domainBindStatus.textContent = `Bound: ${domain}`;
+    domainBindStatus.classList.remove('pill');
+    domainBindStatus.classList.add('pill', 'pill-success');
+    
+    telemetry.emit('domain.bound', {
+      domain,
+      manifestId: currentManifest.transferId,
+      owner,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    appendRegistryLog(`Failed to bind domain: ${error.message ?? error}`);
+  } finally {
+    registerDomainBtn.disabled = false;
+  }
+});
 
 const DEFAULT_SIGNALING_URL = 'ws://34.107.74.70:8787';
 const DEFAULT_SIGNALING_SECRET = 'choose-a-strong-secret';
@@ -562,6 +1269,7 @@ connectBtn.addEventListener('click', async () => {
     if (connectionManager.updateRelayMode) {
       await connectionManager.updateRelayMode();
     }
+    setSidebarStatus(connectionManager.getRelayMode?.() === 'relay' ? 'relay' : 'peer');
     const durationMs = Math.round(
       (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
         attemptStartClock
@@ -599,6 +1307,7 @@ connectBtn.addEventListener('click', async () => {
       context: 'connect',
       message: error?.message ?? String(error)
     });
+    setSidebarStatus('unknown');
     connectBtn.disabled = false;
     connectionManager = null;
   }
@@ -715,6 +1424,11 @@ registerDomainBtn.addEventListener('click', async () => {
     return;
   }
 
+  if (domainBindStatus) {
+    domainBindStatus.textContent = `Binding ${domain}…`;
+    domainBindStatus.classList.remove('pill-success', 'pill-error');
+  }
+
   try {
     const payload = {
       domain,
@@ -726,6 +1440,11 @@ registerDomainBtn.addEventListener('click', async () => {
     const record = await registryClient.registerDomain(payload);
     appendRegistryLog(`Domain registered: ${record.domain} -> ${record.manifestId}`);
     telemetry.setContext('domain', record.domain);
+    if (domainBindStatus) {
+      domainBindStatus.textContent = `Bound to ${record.domain}`;
+      domainBindStatus.classList.remove('pill-error');
+      domainBindStatus.classList.add('pill-success');
+    }
 
     const lookup = await registryClient.getDomain(domain);
     if (lookup) {
@@ -737,6 +1456,11 @@ registerDomainBtn.addEventListener('click', async () => {
   } catch (error) {
     appendRegistryLog(`Domain registration failed: ${error.message}`);
     console.error('Registry domain error', error);
+    if (domainBindStatus) {
+      domainBindStatus.textContent = `Binding failed`;
+      domainBindStatus.classList.remove('pill-success');
+      domainBindStatus.classList.add('pill-error');
+    }
     telemetry.emit('error.event', {
       component: 'panel',
       context: 'registerDomain',
@@ -746,7 +1470,14 @@ registerDomainBtn.addEventListener('click', async () => {
 });
 
 function registerManagerEvents(manager) {
-  manager.addEventListener('registered', (event) => {
+  manager.on('peer-roster', () => {
+    const activeView = document.querySelector('.view.active')?.id;
+    if (activeView === 'view-peers') {
+      refreshPeersTable();
+    }
+  });
+  
+  manager.on('state-change', (state) => {
     const payload = event.detail;
     localPeerId = payload.peerId;
     telemetry.setContext('peerId', localPeerId);

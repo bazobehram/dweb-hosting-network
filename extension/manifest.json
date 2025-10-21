@@ -5,7 +5,7 @@
   "description": "Prototype extension that connects to the DWeb signaling service and exposes the hosting panel.",
   "action": {
     "default_title": "DWeb Hosting Network",
-    "default_popup": "panel/index.html"
+    "default_popup": "popup/index.html"
   },
   "chrome_url_overrides": {
     "newtab": "resolver/index.html"
