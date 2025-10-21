@@ -1,6 +1,7 @@
 import { WebRTCConnectionManager } from '../scripts/webrtc/connectionManager.js';
 import { ChunkManager } from '../scripts/webrtc/chunkManager.js';
 import { RegistryClient } from '../scripts/api/registryClient.js';
+import { TelemetryClient } from '../scripts/telemetry/telemetryClient.js';
 
 const signalingInput = document.getElementById('signalingUrl');
 const peerIdInput = document.getElementById('peerId');
@@ -83,6 +84,7 @@ if (!rawStorageServiceUrl) {
   persistStorageServiceUrl(storageServiceUrl);
 }
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
+const telemetry = new TelemetryClient({ component: 'panel' });
 const PERSISTENCE_DEFAULTS = {
   storeChunkData: false,
   uploadChunksToStorage: false
@@ -551,11 +553,52 @@ connectBtn.addEventListener('click', async () => {
 
   connectBtn.disabled = true;
   appendLog(`Connecting to ${url} ...`);
+  const attemptStartIso = new Date();
+  const attemptStartClock =
+    typeof performance !== 'undefined' ? performance.now() : Date.now();
 
   try {
     await connectionManager.connect();
+    if (connectionManager.updateRelayMode) {
+      await connectionManager.updateRelayMode();
+    }
+    const durationMs = Math.round(
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+        attemptStartClock
+    );
+    telemetry.setContext('signalingUrl', url);
+    telemetry.emit('connection.attempt', {
+      role: 'panel',
+      signalingUrl: url,
+      iceTransport: connectionManager.getIcePolicy?.() ?? 'all',
+      startTime: attemptStartIso.toISOString(),
+      endTime: new Date().toISOString(),
+      durationMs,
+      result: 'success',
+      relay: connectionManager.getRelayMode?.() === 'relay'
+    });
   } catch (error) {
     appendLog(`Failed to connect: ${error.message ?? error}`);
+    const durationMs = Math.round(
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+        attemptStartClock
+    );
+    telemetry.emit('connection.attempt', {
+      role: 'panel',
+      signalingUrl: url,
+      iceTransport: connectionManager?.getIcePolicy?.() ?? 'all',
+      startTime: attemptStartIso.toISOString(),
+      endTime: new Date().toISOString(),
+      durationMs,
+      result: 'error',
+      relay: false,
+      errorCode: error?.code ?? error?.message ?? 'connect-error'
+    });
+    telemetry.emit('error.event', {
+      component: 'panel',
+      context: 'connect',
+      message: error?.message ?? String(error)
+    });
     connectBtn.disabled = false;
     connectionManager = null;
   }
@@ -682,6 +725,7 @@ registerDomainBtn.addEventListener('click', async () => {
     appendRegistryLog(`Registering domain ${domain} ...`);
     const record = await registryClient.registerDomain(payload);
     appendRegistryLog(`Domain registered: ${record.domain} -> ${record.manifestId}`);
+    telemetry.setContext('domain', record.domain);
 
     const lookup = await registryClient.getDomain(domain);
     if (lookup) {
@@ -693,6 +737,11 @@ registerDomainBtn.addEventListener('click', async () => {
   } catch (error) {
     appendRegistryLog(`Domain registration failed: ${error.message}`);
     console.error('Registry domain error', error);
+    telemetry.emit('error.event', {
+      component: 'panel',
+      context: 'registerDomain',
+      message: error?.message ?? String(error)
+    });
   }
 });
 
@@ -700,6 +749,14 @@ function registerManagerEvents(manager) {
   manager.addEventListener('registered', (event) => {
     const payload = event.detail;
     localPeerId = payload.peerId;
+    telemetry.setContext('peerId', localPeerId);
+    telemetry.emit('peer.heartbeat', {
+      peerId: localPeerId,
+      lastSeen: new Date().toISOString(),
+      capabilities: payload.capabilities ?? [],
+      latencyMs: payload.metadata?.latencyMs ?? null,
+      successRate: payload.metadata?.successRate ?? null
+    });
     appendLog(`Registered as ${payload.peerId}`);
     updatePeerList(payload.peers ?? []);
     manager.requestPeerList();
@@ -721,12 +778,29 @@ function registerManagerEvents(manager) {
         metadata: message.metadata ?? {},
         lastSeen: message.lastSeen
       });
+      telemetry.emit('peer.heartbeat', {
+        peerId: message.peerId,
+        lastSeen:
+          typeof message.lastSeen === 'number'
+            ? new Date(message.lastSeen).toISOString()
+            : new Date().toISOString(),
+        capabilities: message.capabilities ?? [],
+        latencyMs: message.metadata?.latencyMs ?? null,
+        successRate: message.metadata?.successRate ?? null
+      });
       return;
     }
 
     if (message.type === 'peer-left') {
       appendLog(`Peer left: ${message.peerId}`);
       removePeer(message.peerId);
+      telemetry.emit('peer.heartbeat', {
+        peerId: message.peerId,
+        lastSeen: new Date().toISOString(),
+        capabilities: [],
+        latencyMs: null,
+        successRate: 0
+      });
       return;
     }
 
@@ -736,6 +810,16 @@ function registerManagerEvents(manager) {
         message.metadata ?? {},
         message.lastSeen
       );
+      telemetry.emit('peer.heartbeat', {
+        peerId: message.peerId,
+        lastSeen:
+          typeof message.lastSeen === 'number'
+            ? new Date(message.lastSeen).toISOString()
+            : new Date().toISOString(),
+        capabilities: message.capabilities ?? [],
+        latencyMs: message.metadata?.latencyMs ?? null,
+        successRate: message.metadata?.successRate ?? null
+      });
     }
   });
 
@@ -1241,19 +1325,21 @@ function createReplicationManager() {
         break;
       }
 
-      const job = {
-        id: jobId,
-        transferId,
-        manifest,
-        manifestId: manifest.manifestId ?? manifest.transferId ?? transferId,
-        transfer,
-        targetPeerId: target.peerId,
-        createdAt: Date.now(),
-        connectionRequested: false,
-        chunks: Array.from({ length: totalChunks }, () => ({
-          status: 'queued',
-          attempts: 0,
-          timeoutId: null,
+    const job = {
+      id: jobId,
+      transferId,
+      manifest,
+      manifestId: manifest.manifestId ?? manifest.transferId ?? transferId,
+      transfer,
+      targetPeerId: target.peerId,
+      createdAt: Date.now(),
+      startedAt: null,
+      replicaTarget: limit,
+      connectionRequested: false,
+      chunks: Array.from({ length: totalChunks }, () => ({
+        status: 'queued',
+        attempts: 0,
+        timeoutId: null,
           lastError: null,
           sentAt: null
         })),
@@ -1265,6 +1351,16 @@ function createReplicationManager() {
 
       jobs.set(jobId, job);
       added = true;
+      telemetry.emit('replication.job', {
+        manifestId: job.manifestId,
+        targetPeerId: job.targetPeerId,
+        state: 'scheduled',
+        replicaCount: limit,
+        totalChunks,
+        ackedChunks: 0,
+        retryCount: 0,
+        quorumReached: manifestHasReplicationQuorum(job.manifestId)
+      });
       appendChannelLog(
         `Replication job queued for ${target.peerId} (score ${target.score.toFixed(1)}).`
       );
@@ -1297,6 +1393,20 @@ function createReplicationManager() {
 
   async function processJob(job) {
     if (!connectionManager) return;
+
+    if (!job.startedAt) {
+      job.startedAt = Date.now();
+      telemetry.emit('replication.job', {
+        manifestId: job.manifestId,
+        targetPeerId: job.targetPeerId,
+        state: 'in_progress',
+        replicaCount: job.replicaTarget,
+        totalChunks: job.chunks.length,
+        ackedChunks: job.stats.completed,
+        retryCount: job.stats.failed,
+        quorumReached: manifestHasReplicationQuorum(job.manifestId)
+      });
+    }
 
     if (connectionManager.targetPeerId !== job.targetPeerId) {
       if (!job.connectionRequested) {
@@ -1384,6 +1494,11 @@ function createReplicationManager() {
       return true;
     } catch (error) {
       chunkState.lastError = error?.message ?? String(error);
+      telemetry.emit('error.event', {
+        component: 'panel',
+        context: 'replication-send-chunk',
+        message: chunkState.lastError ?? 'chunk-send-error'
+      });
       if (chunkState.timeoutId) {
         clearTimeout(chunkState.timeoutId);
         chunkState.timeoutId = null;
@@ -1430,6 +1545,15 @@ function handleTimeout(jobId, chunkIndex) {
     );
     schedule(processQueue);
   }
+  telemetry.emit('replication.chunk', {
+    manifestId: job.manifestId,
+    targetPeerId: job.targetPeerId,
+    chunkIndex,
+    status: 'timeout',
+    attempt: chunkState.attempts,
+    elapsedMs: chunkState.sentAt ? Date.now() - chunkState.sentAt : null,
+    reason: chunkState.lastError
+  });
   emit();
 }
 
@@ -1446,10 +1570,30 @@ function handleTimeout(jobId, chunkIndex) {
 
     chunkState.status = 'acked';
     chunkState.lastError = null;
+    if (!job.firstAckAt) {
+      job.firstAckAt = Date.now();
+      if (job.startedAt) {
+        const ttfbMs = job.firstAckAt - job.startedAt;
+        telemetry.emit('ttfb.measure', {
+          flow: 'publish',
+          ttfbMs,
+          totalTimeMs: null,
+          networkProfile: connectionManager?.getRelayMode?.() === 'relay' ? 'relay' : 'direct'
+        });
+      }
+    }
     job.stats.completed += 1;
     appendChannelLog(
       `Replica ${peerId ?? job.targetPeerId} acknowledged chunk ${chunkIndex + 1}.`
     );
+    telemetry.emit('replication.chunk', {
+      manifestId: job.manifestId,
+      targetPeerId: job.targetPeerId,
+      chunkIndex,
+      status: 'ack',
+      attempt: chunkState.attempts,
+      elapsedMs: chunkState.sentAt ? Date.now() - chunkState.sentAt : null
+    });
     emit();
     maybeFinalize(job);
     schedule(processQueue);
@@ -1483,6 +1627,15 @@ function handleTimeout(jobId, chunkIndex) {
       emit();
       schedule(processQueue);
     }
+    telemetry.emit('replication.chunk', {
+      manifestId: job.manifestId,
+      targetPeerId: job.targetPeerId,
+      chunkIndex,
+      status: 'nack',
+      attempt: chunkState.attempts,
+      elapsedMs: chunkState.sentAt ? Date.now() - chunkState.sentAt : null,
+      reason: chunkState.lastError
+    });
   }
 
   function handleChannelOpen() {
@@ -1553,6 +1706,22 @@ function handleTimeout(jobId, chunkIndex) {
   function finalizeJob(job, success) {
     jobs.delete(job.id);
     emit();
+    const latencyMs =
+      job.startedAt !== null ? Date.now() - job.startedAt : Date.now() - job.createdAt;
+    telemetry.emit('replication.job', {
+      manifestId: job.manifestId,
+      targetPeerId: job.targetPeerId,
+      state: success ? 'completed' : 'failed',
+      replicaCount: job.replicaTarget,
+      totalChunks: job.chunks.length,
+      ackedChunks: job.stats.completed,
+      retryCount: job.stats.failed,
+      quorumReached: manifestHasReplicationQuorum(job.manifestId),
+      latencyMs,
+      failureReason: success
+        ? null
+        : job.chunks.find((chunk) => chunk.status === 'failed')?.lastError ?? 'partial-failure'
+    });
 
     if (success) {
       appendChannelLog(
@@ -2469,6 +2638,10 @@ async function registerManifestWithRegistry(manifest) {
       replicas: [localPeerId, ...(incomingTransfer?.manifest?.replicas ?? [])]
     });
     lastManifestRecord = record;
+    telemetry.setContext(
+      'manifestId',
+      record.manifestId ?? record.transferId ?? manifest.transferId
+    );
     resetManifestReplicationState(record);
     const quorum = getEffectiveAckQuorum();
     appendRegistryLog(
@@ -2480,6 +2653,12 @@ async function registerManifestWithRegistry(manifest) {
   } catch (error) {
     appendRegistryLog(`Manifest registration failed: ${error.message}`);
     console.error('Registry manifest error', error);
+    telemetry.emit('error.event', {
+      component: 'panel',
+      context: 'registerManifestWithRegistry',
+      message: error?.message ?? String(error)
+    });
+    telemetry.setContext('manifestId', null);
     clearManifestReplicationState(resolveManifestId(manifest));
     lastManifestRecord = null;
     refreshRegisterButtonState();
@@ -2535,6 +2714,12 @@ function refreshRegisterButtonState() {
     registerDomainBtn.title = '';
   }
 }
+
+
+
+
+
+
 
 
 

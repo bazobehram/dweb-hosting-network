@@ -1,4 +1,37 @@
-export function registerRoutes(app, store) {
+import { emitTelemetry } from '../../common/telemetry.js';
+
+const COMPONENT_NAME = 'registry';
+
+export function registerRoutes(app, store, helpers = {}) {
+  const emitError =
+    typeof helpers?.emitRegistryError === 'function'
+      ? helpers.emitRegistryError
+      : ({ context, message, code = null, manifestId = null, domain = null } = {}) => {
+          if (!message) return;
+          const payload = {
+            component: COMPONENT_NAME,
+            context,
+            message,
+            code
+          };
+          if (manifestId) payload.manifestId = manifestId;
+          if (domain) payload.domain = domain;
+          emitTelemetry(COMPONENT_NAME, 'error.event', payload);
+        };
+
+  function respondError(reply, { statusCode = 400, error, context, manifestId = null, domain = null, code = null }) {
+    if (typeof statusCode === 'number') {
+      reply.code(statusCode);
+    }
+    emitError({
+      context,
+      message: error,
+      code: code ?? error,
+      manifestId,
+      domain
+    });
+    return { error };
+  }
   app.get('/', async () => ({
     status: 'ok',
     service: 'registry',
@@ -23,8 +56,12 @@ export function registerRoutes(app, store) {
   app.get('/manifests/:manifestId', async (request, reply) => {
     const record = store.getManifest(request.params.manifestId);
     if (!record) {
-      reply.code(404);
-      return { error: 'MANIFEST_NOT_FOUND' };
+      return respondError(reply, {
+        statusCode: 404,
+        error: 'MANIFEST_NOT_FOUND',
+        context: 'get-manifest',
+        manifestId: request.params.manifestId
+      });
     }
     return record;
   });
@@ -42,16 +79,28 @@ export function registerRoutes(app, store) {
       };
     } catch (error) {
       if (error.message === 'MANIFEST_NOT_FOUND') {
-        reply.code(404);
-        return { error: 'MANIFEST_NOT_FOUND' };
+        return respondError(reply, {
+          statusCode: 404,
+          error: 'MANIFEST_NOT_FOUND',
+          context: 'update-manifest-replicas',
+          manifestId
+        });
       }
       if (error.message === 'INVALID_PEER_ID') {
-        reply.code(400);
-        return { error: 'INVALID_PEER_ID' };
+        return respondError(reply, {
+          statusCode: 400,
+          error: 'INVALID_PEER_ID',
+          context: 'update-manifest-replicas',
+          manifestId
+        });
       }
       if (error.message === 'INVALID_CHUNK_INDEXES') {
-        reply.code(400);
-        return { error: 'INVALID_CHUNK_INDEXES' };
+        return respondError(reply, {
+          statusCode: 400,
+          error: 'INVALID_CHUNK_INDEXES',
+          context: 'update-manifest-replicas',
+          manifestId
+        });
       }
       throw error;
     }
@@ -61,13 +110,21 @@ export function registerRoutes(app, store) {
     const { manifestId, index } = request.params;
     const chunkIndex = Number.parseInt(index, 10);
     if (Number.isNaN(chunkIndex)) {
-      reply.code(400);
-      return { error: 'INVALID_CHUNK_INDEX' };
+      return respondError(reply, {
+        statusCode: 400,
+        error: 'INVALID_CHUNK_INDEX',
+        context: 'get-chunk',
+        manifestId
+      });
     }
     const chunk = store.getManifestChunk(manifestId, chunkIndex);
     if (!chunk) {
-      reply.code(404);
-      return { error: 'CHUNK_NOT_FOUND' };
+      return respondError(reply, {
+        statusCode: 404,
+        error: 'CHUNK_NOT_FOUND',
+        context: 'get-chunk',
+        manifestId
+      });
     }
     return {
       manifestId,
@@ -83,8 +140,12 @@ export function registerRoutes(app, store) {
     const { manifestId, index } = request.params;
     const chunkIndex = Number.parseInt(index, 10);
     if (Number.isNaN(chunkIndex)) {
-      reply.code(400);
-      return { error: 'INVALID_CHUNK_INDEX' };
+      return respondError(reply, {
+        statusCode: 400,
+        error: 'INVALID_CHUNK_INDEX',
+        context: 'get-chunk-pointers',
+        manifestId
+      });
     }
 
     const limitParam = request.query?.limit;
@@ -104,8 +165,12 @@ export function registerRoutes(app, store) {
     const { manifestId, index } = request.params;
     const chunkIndex = Number.parseInt(index, 10);
     if (Number.isNaN(chunkIndex)) {
-      reply.code(400);
-      return { error: 'INVALID_CHUNK_INDEX' };
+      return respondError(reply, {
+        statusCode: 400,
+        error: 'INVALID_CHUNK_INDEX',
+        context: 'update-chunk',
+        manifestId
+      });
     }
 
     const payload = request.body ?? {};
@@ -113,8 +178,12 @@ export function registerRoutes(app, store) {
       validatePointerPatch(payload);
       const result = store.updateChunkPointer(manifestId, chunkIndex, payload);
       if (!result) {
-        reply.code(404);
-        return { error: 'CHUNK_NOT_FOUND' };
+        return respondError(reply, {
+          statusCode: 404,
+          error: 'CHUNK_NOT_FOUND',
+          context: 'update-chunk',
+          manifestId
+        });
       }
       return {
         manifestId,
@@ -126,8 +195,20 @@ export function registerRoutes(app, store) {
       };
     } catch (error) {
       if (error.message === 'MANIFEST_NOT_FOUND') {
-        reply.code(404);
-        return { error: 'MANIFEST_NOT_FOUND' };
+        return respondError(reply, {
+          statusCode: 404,
+          error: 'MANIFEST_NOT_FOUND',
+          context: 'update-chunk',
+          manifestId
+        });
+      }
+      if (error.message === 'INVALID_POINTER_PAYLOAD') {
+        return respondError(reply, {
+          statusCode: 400,
+          error: 'INVALID_POINTER_PAYLOAD',
+          context: 'update-chunk',
+          manifestId
+        });
       }
       throw error;
     }
@@ -148,8 +229,12 @@ export function registerRoutes(app, store) {
       return record;
     } catch (error) {
       if (error.message === 'DOMAIN_ALREADY_REGISTERED') {
-        reply.code(409);
-        return { error: 'DOMAIN_ALREADY_REGISTERED' };
+        return respondError(reply, {
+          statusCode: 409,
+          error: 'DOMAIN_ALREADY_REGISTERED',
+          context: 'register-domain',
+          domain: payload.domain
+        });
       }
       throw error;
     }
@@ -167,8 +252,12 @@ export function registerRoutes(app, store) {
       return record;
     } catch (error) {
       if (error.message === 'DOMAIN_NOT_FOUND') {
-        reply.code(404);
-        return { error: 'DOMAIN_NOT_FOUND' };
+        return respondError(reply, {
+          statusCode: 404,
+          error: 'DOMAIN_NOT_FOUND',
+          context: 'update-domain',
+          domain
+        });
       }
       throw error;
     }
@@ -179,8 +268,12 @@ export function registerRoutes(app, store) {
   app.get('/domains/:domain', async (request, reply) => {
     const record = store.getDomain(request.params.domain);
     if (!record) {
-      reply.code(404);
-      return { error: 'DOMAIN_NOT_FOUND' };
+      return respondError(reply, {
+        statusCode: 404,
+        error: 'DOMAIN_NOT_FOUND',
+        context: 'get-domain',
+        domain: request.params.domain
+      });
     }
     return record;
   });

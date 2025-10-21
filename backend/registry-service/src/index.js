@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { emitTelemetry } from '../../common/telemetry.js';
 import { registerRoutes } from './routes.js';
 import { RegistryStore } from './store.js';
 
@@ -16,9 +17,28 @@ const app = Fastify({
   bodyLimit: Number(process.env.REGISTRY_BODY_LIMIT ?? 64 * 1024 * 1024)
 });
 
+const COMPONENT_NAME = 'registry';
+
+function emitRegistryError({ context, message, code = null, manifestId = null, domain = null } = {}) {
+  if (!message) return;
+  const payload = {
+    component: COMPONENT_NAME,
+    context,
+    message,
+    code
+  };
+  if (manifestId) {
+    payload.manifestId = manifestId;
+  }
+  if (domain) {
+    payload.domain = domain;
+  }
+  emitTelemetry(COMPONENT_NAME, 'error.event', payload);
+}
+
 const store = new RegistryStore();
 
-registerRoutes(app, store);
+registerRoutes(app, store, { emitRegistryError });
 
 const apiAuth = initialiseApiAuth(app.log);
 const rateLimiter = createRateLimiter(app.log);
@@ -83,6 +103,11 @@ function startPointerSweep() {
       }
     } catch (error) {
       app.log.error({ err: error }, 'Failed to prune expired chunk pointers');
+      emitRegistryError({
+        context: 'pointer-sweep',
+        message: error?.message ?? 'pointer_sweep_failed',
+        code: 'POINTER_SWEEP_FAILED'
+      });
     }
   };
 
@@ -96,7 +121,13 @@ function startPointerSweep() {
 
 app.setErrorHandler((error, request, reply) => {
   request.log.error(error);
-  reply.code(400).send({ error: error.message ?? 'BAD_REQUEST' });
+  const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 400;
+  emitRegistryError({
+    context: 'request',
+    message: error?.message ?? 'BAD_REQUEST',
+    code: error?.code ?? error?.name ?? 'BAD_REQUEST'
+  });
+  reply.code(statusCode).send({ error: error.message ?? 'BAD_REQUEST' });
 });
 
 app.register(cors, {

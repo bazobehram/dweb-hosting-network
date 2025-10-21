@@ -3,12 +3,47 @@ import cors from '@fastify/cors';
 import fs from 'fs/promises';
 import path from 'path';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { emitTelemetry } from '../../common/telemetry.js';
 
 const PORT = Number(process.env.STORAGE_PORT ?? 8789);
 const HOST = process.env.STORAGE_HOST ?? '0.0.0.0';
 const STORAGE_BACKEND = (
   process.env.STORAGE_BACKEND ?? (process.env.STORAGE_S3_BUCKET ? 's3' : 'filesystem')
 ).toLowerCase();
+
+const COMPONENT_NAME = 'storage';
+
+function emitStorageError({ context, message, code = null, manifestId = null, chunkIndex = null } = {}) {
+  if (!message) return;
+  const payload = {
+    component: COMPONENT_NAME,
+    context,
+    message,
+    code
+  };
+  if (manifestId) payload.manifestId = manifestId;
+  if (typeof chunkIndex === 'number' && Number.isFinite(chunkIndex)) {
+    payload.chunkIndex = chunkIndex;
+  }
+  emitTelemetry(COMPONENT_NAME, 'error.event', payload);
+}
+
+function respondError(
+  reply,
+  { statusCode = 400, error, context, manifestId = null, chunkIndex = null, code = null } = {}
+) {
+  if (typeof statusCode === 'number') {
+    reply.code(statusCode);
+  }
+  emitStorageError({
+    context,
+    message: error,
+    code: code ?? error,
+    manifestId,
+    chunkIndex
+  });
+  return { error };
+}
 
 const loggerConfig = {
   level: process.env.LOG_LEVEL ?? 'info'
@@ -48,9 +83,14 @@ app.addHook('onRequest', async (request, reply) => {
 
   if (apiAuth.enabled && !apiAuth.isPublicRoute(route)) {
     if (!credential || !apiAuth.isAllowed(credential)) {
-      reply.code(401);
-      reply.send({ error: 'UNAUTHENTICATED' });
-      return;
+      reply.send(
+        respondError(reply, {
+          statusCode: 401,
+          error: 'UNAUTHENTICATED',
+          context: 'auth'
+        })
+      );
+      return reply;
     }
   }
 
@@ -65,12 +105,16 @@ app.addHook('onRequest', async (request, reply) => {
       if (result.retryAfter !== undefined) {
         reply.header('Retry-After', result.retryAfter);
       }
-      reply.code(429);
-      reply.send({
+      const payload = respondError(reply, {
+        statusCode: 429,
         error: 'RATE_LIMITED',
-        retryAfter: result.retryAfter ?? Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000))
+        context: 'rate-limit',
+        code: 'RATE_LIMITED'
       });
-      return;
+      payload.retryAfter =
+        result.retryAfter ?? Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
+      reply.send(payload);
+      return reply;
     }
     reply.header('RateLimit-Limit', rateLimiter.limit);
     reply.header('RateLimit-Remaining', Math.max(0, result.remaining));
@@ -82,19 +126,31 @@ app.post('/chunks', async (request, reply) => {
   const { manifestId, chunkIndex, data } = request.body ?? {};
 
   if (typeof manifestId !== 'string' || !manifestId.length) {
-    reply.code(400);
-    return { error: 'INVALID_MANIFEST_ID' };
+    return respondError(reply, {
+      statusCode: 400,
+      error: 'INVALID_MANIFEST_ID',
+      context: 'upload-chunk'
+    });
   }
 
   const index = Number(chunkIndex);
   if (!Number.isInteger(index) || index < 0) {
-    reply.code(400);
-    return { error: 'INVALID_CHUNK_INDEX' };
+    return respondError(reply, {
+      statusCode: 400,
+      error: 'INVALID_CHUNK_INDEX',
+      context: 'upload-chunk',
+      chunkIndex: Number.isInteger(index) ? index : null
+    });
   }
 
   if (typeof data !== 'string' || !data.length) {
-    reply.code(400);
-    return { error: 'INVALID_CHUNK_DATA' };
+    return respondError(reply, {
+      statusCode: 400,
+      error: 'INVALID_CHUNK_DATA',
+      context: 'upload-chunk',
+      manifestId,
+      chunkIndex: index
+    });
   }
 
   try {
@@ -103,8 +159,14 @@ app.post('/chunks', async (request, reply) => {
     return { status: 'ok', backend: storage.mode };
   } catch (error) {
     request.log.error({ err: error, manifestId, index }, 'Failed to persist chunk');
-    reply.code(500);
-    return { error: 'CHUNK_WRITE_FAILED' };
+    return respondError(reply, {
+      statusCode: 500,
+      error: 'CHUNK_WRITE_FAILED',
+      context: 'upload-chunk',
+      manifestId,
+      chunkIndex: index,
+      code: error?.code ?? 'CHUNK_WRITE_FAILED'
+    });
   }
 });
 
@@ -113,21 +175,36 @@ app.get('/chunks/:manifestId/:index', async (request, reply) => {
   const chunkIndex = Number(index);
 
   if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
-    reply.code(400);
-    return { error: 'INVALID_CHUNK_INDEX' };
+    return respondError(reply, {
+      statusCode: 400,
+      error: 'INVALID_CHUNK_INDEX',
+      context: 'download-chunk',
+      manifestId
+    });
   }
 
   try {
     const buffer = await storage.loadChunk(manifestId, chunkIndex);
     if (!buffer) {
-      reply.code(404);
-      return { error: 'CHUNK_NOT_FOUND' };
+      return respondError(reply, {
+        statusCode: 404,
+        error: 'CHUNK_NOT_FOUND',
+        context: 'download-chunk',
+        manifestId,
+        chunkIndex
+      });
     }
     return { data: buffer.toString('base64') };
   } catch (error) {
     request.log.error({ err: error, manifestId, chunkIndex }, 'Failed to read chunk');
-    reply.code(500);
-    return { error: 'CHUNK_READ_FAILED' };
+    return respondError(reply, {
+      statusCode: 500,
+      error: 'CHUNK_READ_FAILED',
+      context: 'download-chunk',
+      manifestId,
+      chunkIndex,
+      code: error?.code ?? error?.name ?? 'CHUNK_READ_FAILED'
+    });
   }
 });
 
@@ -137,6 +214,11 @@ app.listen({ port: PORT, host: HOST })
   })
   .catch((error) => {
     app.log.error(error, 'Failed to start storage service');
+    emitStorageError({
+      context: 'startup',
+      message: error?.message ?? 'FAILED_TO_START',
+      code: error?.code ?? error?.name ?? 'FAILED_TO_START'
+    });
     process.exit(1);
   });
 

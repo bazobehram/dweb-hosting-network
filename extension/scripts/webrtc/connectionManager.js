@@ -52,6 +52,8 @@ export class WebRTCConnectionManager extends EventTarget {
     this.dataChannel = null;
     this.targetPeerId = null;
     this.iceServers = [...DEFAULT_ICE_SERVERS];
+    this.icePolicy = 'all';
+    this.relayMode = 'unknown';
   }
 
   async connect() {
@@ -336,6 +338,7 @@ export class WebRTCConnectionManager extends EventTarget {
       this.peerConnection = null;
     }
     this.targetPeerId = null;
+    this.relayMode = 'unknown';
   }
 
   disconnect() {
@@ -348,6 +351,57 @@ export class WebRTCConnectionManager extends EventTarget {
 
   requestPeerList() {
     this.signalingClient?.send({ type: 'discover' });
+  }
+
+  getIcePolicy() {
+    return this.icePolicy;
+  }
+
+  getRelayMode() {
+    return this.relayMode;
+  }
+
+  async updateRelayMode() {
+    if (!this.peerConnection || typeof this.peerConnection.getStats !== 'function') {
+      this.relayMode = 'unknown';
+      return;
+    }
+    try {
+      const stats = await this.peerConnection.getStats(null);
+      let selected = null;
+      stats.forEach((report) => {
+        if (
+          report.type === 'candidate-pair' &&
+          (report.state === 'succeeded' || report.state === 'connected' || report.nominated || report.selected)
+        ) {
+          if (!selected || report.nominated || report.selected) {
+            selected = report;
+          }
+        }
+      });
+      if (!selected) {
+        stats.forEach((report) => {
+          if (report.type === 'transport' && report.selectedCandidatePairId) {
+            const pair = stats.get?.(report.selectedCandidatePairId);
+            if (pair) {
+              selected = pair;
+            }
+          }
+        });
+      }
+      if (selected) {
+        const local = stats.get?.(selected.localCandidateId);
+        const remote = stats.get?.(selected.remoteCandidateId);
+        const isRelay =
+          (local && local.candidateType === 'relay') ||
+          (remote && remote.candidateType === 'relay');
+        this.relayMode = isRelay ? 'relay' : 'direct';
+      } else {
+        this.relayMode = 'unknown';
+      }
+    } catch {
+      this.relayMode = 'unknown';
+    }
   }
 
   getPeerId() {
@@ -374,6 +428,8 @@ export class WebRTCConnectionManager extends EventTarget {
     });
   }
 }
+
+
 
 
 

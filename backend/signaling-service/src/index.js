@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { nanoid } from 'nanoid';
+import { emitTelemetry } from '../../common/telemetry.js';
 
 const PORT = Number(process.env.SIGNALING_PORT ?? 8787);
 const HEARTBEAT_INTERVAL = 30_000;
@@ -16,6 +17,7 @@ const ICE_SERVERS = parseIceServers(process.env.SIGNALING_ICE_SERVERS);
  * dedicated state store, but for the MVP we keep connections in memory.
  */
 const peers = new Map();
+const COMPONENT_NAME = 'signaling';
 
 const DEFAULT_METADATA = {
   region: 'unknown',
@@ -27,8 +29,27 @@ const DEFAULT_METADATA = {
   language: null,
   lastHeartbeat: null,
   uptimeMs: null,
-  deviceMemoryGb: null
+  deviceMemoryGb: null,
+  successRate: null
 };
+
+function emitPeerHeartbeatEvent(peerId, overrides = {}) {
+  const entry = peers.get(peerId);
+  if (!entry) return;
+  const payload = {
+    peerId,
+    lastSeen: new Date(entry.lastSeen ?? Date.now()).toISOString(),
+    capabilities: Array.isArray(entry.capabilities) ? entry.capabilities : [],
+    latencyMs: entry.metadata?.latencyMs ?? null,
+    uptimeMs: entry.metadata?.uptimeMs ?? null,
+    successRate: entry.metadata?.successRate ?? null
+  };
+  if (overrides && typeof overrides === 'object') {
+    Object.assign(payload, overrides);
+    payload.peerId = peerId;
+  }
+  emitTelemetry(COMPONENT_NAME, 'peer.heartbeat', payload);
+}
 
 
 const server = new WebSocketServer({ port: PORT });
@@ -41,13 +62,18 @@ server.on('connection', (socket) => {
     try {
       message = JSON.parse(rawMessage.toString());
     } catch (error) {
-      sendError(socket, 'invalid_json', 'Messages must be JSON objects');
+      sendError(socket, 'invalid_json', 'Messages must be JSON objects', {
+        context: 'parse_message'
+      });
       return;
     }
 
     const validationError = validateMessage(message);
     if (validationError) {
-      sendError(socket, 'invalid_message', validationError);
+      sendError(socket, 'invalid_message', validationError, {
+        peerId,
+        context: `validate:${message?.type ?? 'unknown'}`
+      });
       return;
     }
 
@@ -55,7 +81,10 @@ server.on('connection', (socket) => {
     switch (type) {
       case 'register': {
         if (!authorize(message.authToken)) {
-          sendError(socket, 'unauthorized', 'Missing or invalid auth token');
+          sendError(socket, 'unauthorized', 'Missing or invalid auth token', {
+            peerId: message.peerId ?? null,
+            context: 'register'
+          });
           return;
         }
         peerId = registerPeer(socket, message);
@@ -84,13 +113,18 @@ server.on('connection', (socket) => {
 
   socket.on('close', () => {
     if (peerId) {
+      emitPeerHeartbeatEvent(peerId, { lastSeen: new Date().toISOString() });
+      emitTelemetry(COMPONENT_NAME, 'error.event', {
+        message: `Peer ${peerId} disconnected`,
+        code: 'peer_disconnect',
+        peerId,
+        context: 'socket-close'
+      });
       peers.delete(peerId);
       broadcastPeerUpdate({ type: 'peer-left', peerId });
-      console.log(`👋 Peer disconnected: ${peerId}`);
+      console.log(`?? Peer disconnected: ${peerId}`);
     }
   });
-});
-
 server.on('listening', () => {
   console.log(`🚀 Signaling service listening on ws://localhost:${PORT}`);
 });
@@ -136,6 +170,8 @@ function registerPeer(socket, message) {
     lastSeen: peers.get(peerId).lastSeen
   }, peerId);
 
+  emitPeerHeartbeatEvent(peerId);
+
   return peerId;
 }
 
@@ -160,7 +196,10 @@ function forwardSignal(fromPeerId, message) {
   if (!targetPeerId || !peers.has(targetPeerId)) {
     const origin = peers.get(fromPeerId);
     if (origin) {
-      sendError(origin.socket, 'unknown_peer', `Peer ${targetPeerId} not connected`);
+      sendError(origin.socket, 'unknown_peer', `Peer ${targetPeerId} not connected`, {
+        peerId: fromPeerId,
+        context: `forward-signal:${targetPeerId ?? 'unknown'}`
+      });
     }
     return;
   }
@@ -208,6 +247,8 @@ function refreshPeer(peerId, message) {
       lastSeen: entry.lastSeen
     }, peerId);
   }
+
+  emitPeerHeartbeatEvent(peerId);
 }
 
 /**
@@ -251,13 +292,21 @@ setInterval(() => {
       } catch {
         // ignore termination errors
       }
+      emitPeerHeartbeatEvent(peerId, {
+        lastSeen: new Date(entry.lastSeen).toISOString()
+      });
+      emitTelemetry(COMPONENT_NAME, 'error.event', {
+        message: `Peer ${peerId} timed out`,
+        code: 'peer_timeout',
+        peerId,
+        context: 'heartbeat-monitor'
+      });
       peers.delete(peerId);
-      console.log(`⏳ Peer timed out: ${peerId}`);
+      console.log(`? Peer timed out: ${peerId}`);
       broadcastPeerUpdate({ type: 'peer-left', peerId });
     }
   }
 }, HEARTBEAT_INTERVAL);
-
 function validateMessage(message) {
   if (typeof message !== 'object' || message === null) {
     return 'Payload must be an object';
@@ -325,12 +374,23 @@ function validateMessage(message) {
   }
 }
 
-function sendError(socket, code, message) {
+function sendError(socket, code, message, { peerId = null, context = null } = {}) {
   try {
     socket.send(JSON.stringify({ type: 'error', error: { code, message } }));
   } catch {
     // ignore send failures
   }
+  const payload = {
+    message: typeof message === 'string' ? message : String(message),
+    code
+  };
+  if (peerId) {
+    payload.peerId = peerId;
+  }
+  if (context) {
+    payload.context = context;
+  }
+  emitTelemetry(COMPONENT_NAME, 'error.event', payload);
 }
 
 function authorize(authToken) {
@@ -480,6 +540,17 @@ function sanitizePeerMetadata(metadata, { mergeWithDefaults = true } = {}) {
     }
   }
 
+  if ('successRate' in metadata) {
+    const successRate = extractNumber(metadata.successRate, { min: 0, max: 1 });
+    if (successRate !== undefined) {
+      base.successRate = successRate;
+    } else if (metadata.successRate === null) {
+      base.successRate = DEFAULT_METADATA.successRate;
+    } else if (!mergeWithDefaults) {
+      delete base.successRate;
+    }
+  }
+
   return base;
 }
 
@@ -518,9 +589,4 @@ function extractNumber(value, { min = Number.NEGATIVE_INFINITY, max = Number.POS
   const clamped = Math.min(max, Math.max(min, numeric));
   return round ? Math.round(clamped) : clamped;
 }
-
-
-
-
-
 

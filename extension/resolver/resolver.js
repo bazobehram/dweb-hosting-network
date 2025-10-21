@@ -1,5 +1,6 @@
 import { RegistryClient } from "../scripts/api/registryClient.js";
 import { settings } from "./settings.js";
+import { TelemetryClient } from "../scripts/telemetry/telemetryClient.js";
 
 const domainInput = document.getElementById("domainInput");
 const registryUrlInput = document.getElementById("registryUrl");
@@ -25,6 +26,8 @@ const SOURCE_LABELS = {
   cache: "Cache"
 };
 
+const RESOLVE_CACHE_NAME = "dweb-resolver-cache-v1";
+
 let currentRegistryApiKey = loadRegistryApiKey();
 let storageApiKey = loadStorageApiKey();
 let storageServiceUrl =
@@ -33,6 +36,7 @@ let storageServiceOrigin = computeOrigin(storageServiceUrl);
 let registryClient = new RegistryClient(registryUrlInput.value, {
   apiKey: currentRegistryApiKey,
 });
+const telemetry = new TelemetryClient({ component: "resolver" });
 let currentResolveStats = createResolveStats();
 
 if (registryApiKeyInput) {
@@ -91,12 +95,26 @@ resolveBtn.addEventListener("click", async () => {
   }
 
   resetResolveStats();
+  telemetry.setContext("domain", domain);
+  telemetry.setContext("manifestId", null);
   appendLog(`Resolving ${domain} ...`);
+
+  let manifestId = null;
 
   try {
     const record = await registryClient.getDomain(domain);
     if (!record) {
       appendLog(`Domain not found: ${domain}`);
+      telemetry.emit("error.event", {
+        component: "resolver",
+        context: "domain-lookup",
+        message: "DOMAIN_NOT_FOUND"
+      });
+      emitResolveSummary({
+        manifestId: null,
+        domain,
+        failureReason: "domain-not-found"
+      });
       return;
     }
 
@@ -104,12 +122,25 @@ resolveBtn.addEventListener("click", async () => {
       `Manifest ${record.manifestId} with ${record.replicas?.length ?? 0} replicas`
     );
 
-    const manifestId = record.manifestId;
+    manifestId = record.manifestId;
+    telemetry.setContext("manifestId", manifestId);
     const manifest = await registryClient.getManifest(manifestId);
     if (!manifest) {
       appendLog(`Manifest not found: ${manifestId}`);
+      telemetry.emit("error.event", {
+        component: "resolver",
+        context: "manifest-lookup",
+        message: "MANIFEST_NOT_FOUND"
+      });
+      emitResolveSummary({
+        manifestId,
+        domain,
+        failureReason: "manifest-not-found"
+      });
       return;
     }
+
+    currentResolveStats.expectedChunks = manifest.chunkCount ?? 0;
 
     appendLog(
       `Manifest fetched: ${manifest.fileName} (${manifest.chunkCount} chunks)`
@@ -120,6 +151,17 @@ resolveBtn.addEventListener("click", async () => {
       const chunkData = await fetchChunk(manifestId, i, record.replicas ?? []);
       if (!chunkData) {
         appendLog(`Failed to fetch chunk ${i}`);
+        const failureReason = `chunk-${i}-fetch-failed`;
+        telemetry.emit("error.event", {
+          component: "resolver",
+          context: "chunk-fetch",
+          message: failureReason
+        });
+        emitResolveSummary({
+          manifestId,
+          domain,
+          failureReason
+        });
         return;
       }
       chunks.push(chunkData);
@@ -131,9 +173,24 @@ resolveBtn.addEventListener("click", async () => {
     previewFrame.src = url;
     previewFrame.onload = () => URL.revokeObjectURL(url);
     appendLog(`Content rendered. (${manifest.fileName})`);
+    emitResolveSummary({
+      manifestId,
+      domain,
+      failureReason: null
+    });
   } catch (error) {
     appendLog(`Resolve error: ${error.message}`);
     console.error(error);
+    telemetry.emit("error.event", {
+      component: "resolver",
+      context: "resolve",
+      message: error?.message ?? String(error)
+    });
+    emitResolveSummary({
+      manifestId,
+      domain,
+      failureReason: error?.message ?? "resolve-error"
+    });
   }
 });
 
@@ -152,14 +209,23 @@ function createResolveStats() {
     cache: 0,
     fallback: false,
     fallbackReasons: new Set(),
-    last: null
+    last: null,
+    expectedChunks: 0,
+    startedAt: null,
+    firstByteAt: null
   };
 }
 
 function resetResolveStats() {
   currentResolveStats = createResolveStats();
+  currentResolveStats.startedAt = nowMs();
+  currentResolveStats.firstByteAt = null;
   updateStatusModeBadge();
   updateStatusDisplay();
+}
+
+function nowMs() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 function updateStatusModeBadge() {
@@ -174,7 +240,7 @@ function updateStatusModeBadge() {
 function updateStatusDisplay() {
   if (statusTotalsEl) {
     statusTotalsEl.className = "badge badge-muted";
-    statusTotalsEl.textContent = `Peer ${currentResolveStats.peer} · Pointer ${currentResolveStats.pointer} · Registry ${currentResolveStats.registry} · Cache ${currentResolveStats.cache}`;
+    statusTotalsEl.textContent = `Peer ${currentResolveStats.peer} | Pointer ${currentResolveStats.pointer} | Registry ${currentResolveStats.registry} | Cache ${currentResolveStats.cache}`;
   }
   if (statusLastEl) {
     const last = currentResolveStats.last;
@@ -198,13 +264,48 @@ function updateStatusDisplay() {
   }
 }
 
-function recordChunkSource(source) {
+function recordChunkSource(
+  source,
+  {
+    chunkIndex = null,
+    durationMs = null,
+    fallbackTriggered = false,
+    fallbackReason = null,
+    success = true
+  } = {}
+) {
   if (!currentResolveStats) return;
-  if (!["peer", "pointer", "registry", "cache"].includes(source)) return;
+  const validSources = ["peer", "pointer", "registry", "cache", "fallback-none"];
+  if (!validSources.includes(source)) return;
   currentResolveStats.total += 1;
-  currentResolveStats[source] += 1;
+  if (
+    Object.prototype.hasOwnProperty.call(currentResolveStats, source) &&
+    typeof currentResolveStats[source] === "number"
+  ) {
+    currentResolveStats[source] += 1;
+  }
   currentResolveStats.last = source;
+  if (fallbackTriggered) {
+    currentResolveStats.fallback = true;
+    if (fallbackReason) {
+      fallbackReason
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .forEach((value) => currentResolveStats.fallbackReasons.add(value));
+    }
+  }
+  if (success && currentResolveStats.firstByteAt === null) {
+    currentResolveStats.firstByteAt = nowMs();
+  }
   updateStatusDisplay();
+  telemetry.emit("resolve.chunk", {
+    chunkIndex,
+    source,
+    durationMs,
+    fallbackTriggered,
+    fallbackReason: fallbackReason ?? null
+  });
 }
 
 function recordFallback(reason) {
@@ -217,9 +318,26 @@ function recordFallback(reason) {
 }
 
 async function fetchChunk(manifestId, index, replicas) {
+  const startClock = nowMs();
+  const elapsedMs = () =>
+    Math.round(nowMs() - startClock);
+  let fallbackTriggered = false;
+  const fallbackReasons = new Set();
+
+  const noteFallback = (reason) => {
+    fallbackTriggered = true;
+    recordFallback(reason ?? null);
+    if (reason) {
+      fallbackReasons.add(reason);
+    }
+  };
+
+  const aggregatedFallbackReason = () =>
+    fallbackReasons.size ? Array.from(fallbackReasons).join(",") : null;
+
   if (settings.preferCache && navigator.serviceWorker.controller) {
     const cacheResponse = await caches
-      .open("dweb-resolver-cache-v1")
+      .open(RESOLVE_CACHE_NAME)
       .then((cache) =>
         cache.match(`${registryClient.baseUrl}/manifests/${manifestId}/chunks/${index}`)
       );
@@ -227,7 +345,13 @@ async function fetchChunk(manifestId, index, replicas) {
       const payload = await cacheResponse.json();
       if (payload?.data) {
         appendLog(`Chunk ${index} served from cache.`);
-        recordChunkSource("cache");
+        recordChunkSource("cache", {
+          chunkIndex: index,
+          durationMs: elapsedMs(),
+          fallbackTriggered,
+          fallbackReason: aggregatedFallbackReason(),
+          success: true
+        });
         return base64ToUint8Array(payload.data);
       }
     }
@@ -244,36 +368,46 @@ async function fetchChunk(manifestId, index, replicas) {
       });
       if (peerResponse?.status === "success" && peerResponse.data) {
         appendLog(`Chunk ${index} fetched from peer.`);
-        recordChunkSource("peer");
+        recordChunkSource("peer", {
+          chunkIndex: index,
+          durationMs: elapsedMs(),
+          fallbackTriggered,
+          fallbackReason: aggregatedFallbackReason(),
+          success: true
+        });
         return base64ToUint8Array(peerResponse.data);
       }
       if (peerResponse?.status === "in-progress") {
         appendLog(`Chunk ${index} pending peer response; falling back.`);
-      }
-      if (peerResponse?.status === "timeout") {
+      } else if (peerResponse?.status === "timeout") {
         appendLog(`Chunk ${index} peer request timed out.`);
-      }
-      if (peerResponse?.status === "unavailable") {
+      } else if (peerResponse?.status === "unavailable") {
         appendLog(`Chunk ${index} peer unavailable.`);
-      }
-      if (peerResponse?.status === "error") {
+      } else if (peerResponse?.status === "error") {
         appendLog(
           `Peer reported error for chunk ${index}: ${peerResponse.reason ?? "unknown"}`
         );
       }
       const status = peerResponse?.status;
       if (status && status !== "success") {
-        recordFallback(`peer-${status}`);
+        noteFallback(`peer-${status}`);
       }
     } catch (error) {
       appendLog(`Peer request failed: ${error.message}`);
-      recordFallback("peer-exception");
+      noteFallback("peer-exception");
     }
   }
 
   if (!settings.fallbackToRegistry) {
     appendLog(`Skipping registry fallback for chunk ${index}.`);
-    recordFallback("registry-fallback-disabled");
+    noteFallback("registry-fallback-disabled");
+    recordChunkSource("fallback-none", {
+      chunkIndex: index,
+      durationMs: elapsedMs(),
+      fallbackTriggered: true,
+      fallbackReason: aggregatedFallbackReason() ?? "registry-fallback-disabled",
+      success: false
+    });
     return null;
   }
 
@@ -281,57 +415,116 @@ async function fetchChunk(manifestId, index, replicas) {
     const chunkRecord = await registryClient.getManifestChunk(manifestId, index);
     if (!chunkRecord) {
       appendLog(`Registry chunk ${index} not found.`);
-      return null;
-    }
-
-    if (Array.isArray(chunkRecord.replicas) && chunkRecord.replicas.length) {
-      appendLog(`Chunk ${index} replicas: ${chunkRecord.replicas.join(", ")}`);
-    }
-
-    if (chunkRecord.data) {
-      appendLog(`Chunk ${index} served from registry.`);
-      recordChunkSource("registry");
-      return base64ToUint8Array(chunkRecord.data);
-    }
-
-    if (chunkRecord.pointer) {
-      appendLog(`Chunk ${index} missing inline data, following pointer.`);
-      try {
-        const headers = shouldAttachStorageHeaders(chunkRecord.pointer)
-          ? buildStorageHeaders({ Accept: "application/json" })
-          : { Accept: "application/json" };
-        const pointerResponse = await fetch(chunkRecord.pointer, {
-          headers,
-        });
-        if (pointerResponse.ok) {
-          const payload = await pointerResponse.json();
-          if (payload?.data) {
-            appendLog(`Chunk ${index} served via storage pointer.`);
-            recordChunkSource("pointer");
-            return base64ToUint8Array(payload.data);
-          }
-        } else {
-          appendLog(
-            `Pointer request failed for chunk ${index}: ${pointerResponse.status}`
-          );
-          recordFallback(`pointer-${pointerResponse.status}`);
-        }
-      } catch (error) {
-        appendLog(`Pointer fetch failed for chunk ${index}: ${error.message}`);
-        recordFallback("pointer-error");
-      }
+      noteFallback("registry-miss");
     } else {
-      appendLog(`Chunk ${index} has no data or storage pointer.`);
-      recordFallback("chunk-missing");
+      if (Array.isArray(chunkRecord.replicas) && chunkRecord.replicas.length) {
+        appendLog(`Chunk ${index} replicas: ${chunkRecord.replicas.join(", ")}`);
+      }
+
+      if (chunkRecord.data) {
+        appendLog(`Chunk ${index} served from registry.`);
+        noteFallback("registry-inline");
+        recordChunkSource("registry", {
+          chunkIndex: index,
+          durationMs: elapsedMs(),
+          fallbackTriggered: true,
+          fallbackReason: aggregatedFallbackReason(),
+          success: true
+        });
+        return base64ToUint8Array(chunkRecord.data);
+      }
+
+      if (chunkRecord.pointer) {
+        appendLog(`Chunk ${index} missing inline data, following pointer.`);
+        noteFallback("pointer");
+        try {
+          const headers = shouldAttachStorageHeaders(chunkRecord.pointer)
+            ? buildStorageHeaders({ Accept: "application/json" })
+            : { Accept: "application/json" };
+          const pointerResponse = await fetch(chunkRecord.pointer, {
+            headers,
+          });
+          if (pointerResponse.ok) {
+            const payload = await pointerResponse.json();
+            if (payload?.data) {
+              appendLog(`Chunk ${index} served via storage pointer.`);
+              recordChunkSource("pointer", {
+                chunkIndex: index,
+                durationMs: elapsedMs(),
+                fallbackTriggered: true,
+                fallbackReason: aggregatedFallbackReason(),
+                success: true
+              });
+              return base64ToUint8Array(payload.data);
+            }
+          } else {
+            appendLog(
+              `Pointer request failed for chunk ${index}: ${pointerResponse.status}`
+            );
+            noteFallback(`pointer-${pointerResponse.status}`);
+          }
+        } catch (error) {
+          appendLog(`Pointer fetch failed for chunk ${index}: ${error.message}`);
+          noteFallback("pointer-error");
+        }
+      } else {
+        appendLog(`Chunk ${index} has no data or storage pointer.`);
+        noteFallback("chunk-missing");
+      }
     }
   } catch (error) {
     appendLog(`Registry chunk fetch failed: ${error.message}`);
-    recordFallback("registry-error");
+    noteFallback("registry-error");
   }
 
   appendLog(`Chunk ${index} unavailable.`);
-  recordFallback("chunk-unavailable");
+  noteFallback("chunk-unavailable");
+  recordChunkSource("fallback-none", {
+    chunkIndex: index,
+    durationMs: elapsedMs(),
+    fallbackTriggered: true,
+    fallbackReason: aggregatedFallbackReason(),
+    success: false
+  });
   return null;
+}
+
+function emitResolveSummary({ manifestId, domain, failureReason }) {
+  const stats = currentResolveStats ?? createResolveStats();
+  const expectedChunks =
+    typeof stats.expectedChunks === "number" && stats.expectedChunks > 0
+      ? stats.expectedChunks
+      : stats.total;
+  const peerHits = stats.peer;
+  const fallbackHits = stats.pointer + stats.registry + stats.cache;
+  const start = stats.startedAt;
+  const now = nowMs();
+  const totalDurationMs = start !== null ? Math.max(0, Math.round(now - start)) : 0;
+  const ttfbMs =
+    start !== null && stats.firstByteAt !== null
+      ? Math.max(0, Math.round(stats.firstByteAt - start))
+      : totalDurationMs;
+
+  telemetry.emit("resolve.summary", {
+    manifestId,
+    domain,
+    chunkCount: expectedChunks,
+    peerHits,
+    fallbackHits,
+    ttfbMs,
+    totalDurationMs,
+    relayUsage: false,
+    failureReason: failureReason ?? null
+  });
+
+  if (stats.firstByteAt !== null) {
+    telemetry.emit("ttfb.measure", {
+      flow: "resolve",
+      ttfbMs,
+      totalTimeMs: totalDurationMs,
+      networkProfile: settings.fallbackToRegistry ? "peer-first" : "peer-only"
+    });
+  }
 }
 
 function base64ToUint8Array(base64) {
