@@ -258,7 +258,13 @@ async function refreshDashboardOverview() {
   }
   
   if (peersCountEl) {
-    peersCountEl.textContent = peers ? peers.length : '0';
+    // Get peer count from background service
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'background-peer-status' });
+      peersCountEl.textContent = response?.peerCount || 0;
+    } catch {
+      peersCountEl.textContent = '0';
+    }
   }
   
   if (networkStatusEl) {
