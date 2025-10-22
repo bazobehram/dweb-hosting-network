@@ -24,6 +24,8 @@ const authMagicLinkBtn = document.getElementById('authMagicLinkBtn');
 const VIEW_STORAGE_KEY = 'dweb-panel-active-view';
 const AUTH_STORAGE_KEY = 'dweb-auth-state';
 const STATUS_STORAGE_KEY = 'lastLoadStatus';
+const APPS_STORAGE_KEY = 'dweb-published-apps';
+const APPS_BACKUP_STORAGE_KEY = 'dweb-published-apps-backup';
 
 const signalingInput = document.getElementById('signalingUrl');
 const peerIdInput = document.getElementById('peerId');
@@ -91,11 +93,30 @@ let lastManifestRecord = null;
 // Early initialization for apps list
 function loadAppsFromStorage() {
   try {
-    const raw = window.localStorage.getItem('dweb-published-apps');
-    return raw ? JSON.parse(raw) : [];
+    const raw = window.localStorage.getItem(APPS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    // Try backup if main is missing/corrupt
+    const backupRaw = window.localStorage.getItem(APPS_BACKUP_STORAGE_KEY);
+    if (backupRaw) {
+      const parsed = JSON.parse(backupRaw);
+      if (Array.isArray(parsed?.apps)) {
+        // Restore from backup
+        window.localStorage.setItem(APPS_STORAGE_KEY, JSON.stringify(parsed.apps));
+        return parsed.apps;
+      }
+    }
+    return [];
   } catch {
     return [];
   }
+}
+
+async function loadPublishedApps() {
+  publishedApps = loadAppsFromStorage();
+  return publishedApps;
 }
 
 let publishedApps = loadAppsFromStorage();
@@ -187,6 +208,12 @@ authPasskeyBtn?.addEventListener('click', () => {
   persistAuthState(authState);
   updateOwnerBadge(ownerId);
   hideAuthOverlay();
+  try {
+    registryClient?.listDomains?.().then((res) => {
+      const all = Array.isArray(res) ? res : (Array.isArray(res?.domains) ? res.domains : []);
+      populateDomainSuggestionLists(all);
+    }).catch(() => {});
+  } catch {}
 });
 
 authMagicLinkBtn?.addEventListener('click', () => {
@@ -195,6 +222,12 @@ authMagicLinkBtn?.addEventListener('click', () => {
   persistAuthState(authState);
   updateOwnerBadge(ownerId);
   hideAuthOverlay();
+  try {
+    registryClient?.listDomains?.().then((res) => {
+      const all = Array.isArray(res) ? res : (Array.isArray(res?.domains) ? res.domains : []);
+      populateDomainSuggestionLists(all);
+    }).catch(() => {});
+  } catch {}
 });
 
 ownerInput?.addEventListener('change', () => {
@@ -334,6 +367,9 @@ async function refreshDomainsList() {
     
     const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
     
+    // Update datalists for search/inputs
+    populateDomainSuggestionLists(allDomains);
+    
     // Filter to only show current user's domains
     const myDomains = authState?.ownerId 
       ? allDomains.filter(d => d.owner === authState.ownerId)
@@ -351,7 +387,7 @@ async function refreshDomainsList() {
     
     list.forEach((domain) => {
       const row = domainsTableBody.insertRow();
-      const isBound = Boolean(domain.manifestId);
+      const isBound = Boolean(domain.manifestId && domain.manifestId !== 'unbound');
       const statusClass = isBound ? 'status-bound' : 'status-unbound';
       const statusText = isBound ? 'Bound' : 'Reserved';
       const updatedDate = domain.updatedAt ? new Date(domain.updatedAt).toLocaleString() : '—';
@@ -387,6 +423,33 @@ async function refreshDomainsList() {
   }
 }
 
+function populateDomainSuggestionLists(allDomains) {
+  try {
+    const owned = authState?.ownerId
+      ? allDomains.filter(d => d.owner === authState.ownerId).map(d => d.domain)
+      : [];
+    const all = allDomains.map(d => d.domain);
+    
+    const toNameOnly = (arr) => Array.from(new Set(arr))
+      .map(d => String(d || ''))
+      .filter(Boolean)
+      .map(d => d.replace(/\.dweb$/i, ''))
+      .sort((a, b) => a.localeCompare(b));
+    
+    const fill = (id, items) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = items.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
+    };
+    
+    fill('quickDomainsList', toNameOnly(owned));
+    fill('bindingDomainsList', toNameOnly(owned));
+    fill('searchDomainsList', toNameOnly(all));
+  } catch (e) {
+    // ignore
+  }
+}
+
 async function refreshPeersTable() {
   const peerTableBody = document.getElementById('peerTableBody');
   if (!peerTableBody) return;
@@ -406,6 +469,127 @@ async function refreshPeersTable() {
       <td>—</td>
     `;
   });
+}
+
+async function refreshBindingsView() {
+  // Load published apps from storage first
+  await loadPublishedApps();
+  
+  // Populate app selector
+  const bindingAppSelect = document.getElementById('bindingAppSelect');
+  const bindingDomainInput = document.getElementById('bindingDomainInput');
+  const createBindingBtn = document.getElementById('createBindingBtn');
+  
+  if (bindingAppSelect) {
+    bindingAppSelect.innerHTML = '<option value="">-- Choose published app --</option>';
+    if (publishedApps && publishedApps.length > 0) {
+      publishedApps.forEach(app => {
+        const option = document.createElement('option');
+        option.value = app.manifestId;
+        option.textContent = `${app.fileName || 'Unnamed'} (${app.manifestId.slice(0, 12)}...)`;
+        bindingAppSelect.appendChild(option);
+      });
+    }
+  }
+  
+  // Enable/disable create button based on current values
+  if (createBindingBtn) {
+    const hasApp = bindingAppSelect?.value;
+    const hasDomain = bindingDomainInput?.value?.trim();
+    createBindingBtn.disabled = !hasApp || !hasDomain;
+  }
+  
+  // Populate domain suggestions for inputs
+  try {
+    const result = await registryClient.listDomains();
+    const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+    populateDomainSuggestionLists(allDomains);
+  } catch {}
+  
+  // Render bindings list
+  await renderBindingsList();
+}
+
+async function renderBindingsList() {
+  const container = document.getElementById('bindingsTableContainer');
+  if (!container) return;
+  
+  try {
+    // Get all domains
+    const result = await registryClient.listDomains();
+    const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+    
+    // Filter to user's bound domains
+    const myBindings = authState?.ownerId 
+      ? allDomains.filter(d => d.owner === authState.ownerId && d.manifestId && d.manifestId !== 'unbound')
+      : [];
+    
+    if (myBindings.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <p class="empty-icon">🔗</p>
+          <p class="empty-text">No bindings yet</p>
+          <p class="empty-hint">Create a binding above to connect an app to a domain</p>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = '';
+    myBindings.forEach(binding => {
+      const app = publishedApps.find(a => a.manifestId === binding.manifestId);
+      const appName = app?.fileName || 'Unknown App';
+      
+      const bindingItem = document.createElement('div');
+      bindingItem.className = 'binding-item';
+      bindingItem.innerHTML = `
+        <div class="binding-info">
+          <div class="binding-app">
+            <div class="binding-app-name">📄 ${escapeHtml(appName)}</div>
+            <div class="binding-app-id">${escapeHtml(binding.manifestId.slice(0, 24))}...</div>
+          </div>
+          <div class="binding-connector">→</div>
+          <div class="binding-domain">
+            <div class="binding-domain-name">🌐 ${escapeHtml(binding.domain)}</div>
+            <div class="binding-domain-status">Bound • Updated ${new Date(binding.updatedAt || Date.now()).toLocaleDateString()}</div>
+          </div>
+        </div>
+        <div class="binding-actions">
+          <button class="secondary small" data-action="open" data-domain="${escapeHtml(binding.domain)}">Open</button>
+          <button class="secondary small" data-action="unbind" data-domain="${escapeHtml(binding.domain)}">Unbind</button>
+        </div>
+      `;
+      
+      // Add event listeners
+      bindingItem.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          const domain = btn.dataset.domain;
+          if (action === 'open') {
+            window.openAppDomain(domain);
+          } else if (action === 'unbind') {
+            unbindDomainFromBindingsView(domain);
+          }
+        });
+      });
+      
+      container.appendChild(bindingItem);
+    });
+  } catch (error) {
+    container.innerHTML = `<div class="empty-state"><p style="color:var(--danger);">Error loading bindings: ${escapeHtml(error.message || error)}</p></div>`;
+  }
+}
+
+async function unbindDomainFromBindingsView(domainName) {
+  if (!confirm(`Unbind domain ${domainName}? The domain will be reserved but not connected to any app.`)) return;
+  
+  try {
+    await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
+    alert(`Domain ${domainName} has been unbound`);
+    await renderBindingsList();
+  } catch (error) {
+    alert(`Failed to unbind: ${error.message || error}`);
+  }
 }
 
 function escapeHtml(unsafe) {
@@ -432,68 +616,66 @@ window.unbindDomain = async function (button) {
   }
 };
 
+let currentEditingDomain = null;
+let selectedManifestId = null;
+
 window.editDomain = async function(domainName) {
   if (!domainName) return;
   
   try {
+    // Load published apps from storage first
+    await loadPublishedApps();
+    
     const domain = await registryClient.getDomain(domainName);
     if (!domain) {
       alert(`Domain ${domainName} not found`);
       return;
     }
     
-    const isBound = Boolean(domain.manifestId && domain.manifestId !== 'unbound');
+    currentEditingDomain = domain;
+    selectedManifestId = domain.manifestId && domain.manifestId !== 'unbound' ? domain.manifestId : null;
     
-    let action = isBound ? 'Domain is bound. Select action:\n\n' : 'Domain is unbound. Select action:\n\n';
-    action += '1. ' + (isBound ? 'Rebind to different app' : 'Bind to published app') + '\n';
-    action += '2. Unbind (make reserved)\n';
-    action += '3. Transfer ownership\n';
-    action += '4. Delete domain\n';
+    // Show modal
+    const modal = document.getElementById('domainBindModal');
+    const domainNameEl = document.getElementById('bindModalDomainName');
+    const appsContainer = document.getElementById('bindAppsContainer');
     
-    const choice = prompt(action, '1');
+    domainNameEl.textContent = domainName;
+    modal.classList.remove('hidden');
     
-    if (choice === '1') {
-      // Show list of published apps
-      if (publishedApps.length === 0) {
-        alert('No published apps available.\n\nGo to Hosting tab and publish an app first!');
-        return;
-      }
+    // Populate apps list
+    if (!publishedApps || publishedApps.length === 0) {
+      appsContainer.innerHTML = '<p class="empty-hint">No published apps available.<br/>Go to Hosting tab and publish an app first!</p>';
+    } else {
+      appsContainer.innerHTML = publishedApps.map((app, idx) => {
+        const isSelected = app.manifestId === selectedManifestId;
+        return `
+          <div class="bind-app-item ${isSelected ? 'selected' : ''}" data-manifest-id="${escapeHtml(app.manifestId)}">
+            <input type="radio" name="bindAppRadio" class="bind-app-radio" value="${escapeHtml(app.manifestId)}" ${isSelected ? 'checked' : ''} />
+            <div class="bind-app-details">
+              <div class="bind-app-name">${escapeHtml(app.fileName || 'Unnamed App')}</div>
+              <div class="bind-app-manifest" title="${escapeHtml(app.manifestId)}">${escapeHtml(app.manifestId)}</div>
+              <div class="bind-app-meta">${app.chunks || 0} chunks • Published ${timeAgo(app.publishedAt)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
       
-      const appChoices = publishedApps.map((app, idx) => 
-        `${idx + 1}. ${app.manifestId.slice(0, 16)}... (${app.fileName || 'Unknown'}, ${app.chunks || 0} chunks)`
-      ).join('\n');
-      
-      const appChoice = prompt(`Select app to bind (1-${publishedApps.length}):\n\n${appChoices}`, '1');
-      const index = parseInt(appChoice) - 1;
-      
-      if (index >= 0 && index < publishedApps.length) {
-        const manifestId = publishedApps[index].manifestId;
-        await registryClient.updateDomainBinding(domainName, { manifestId });
-        alert(`✅ Domain ${domainName} bound to:\n${manifestId}`);
-        await refreshDomainsList();
-      }
-    } else if (choice === '2') {
-      if (confirm(`Unbind domain ${domainName}? It will become reserved (unbound).`)) {
-        await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
-        alert(`Domain ${domainName} is now unbound`);
-        await refreshDomainsList();
-      }
-    } else if (choice === '3') {
-      const newOwner = prompt('Enter new owner ID:', domain.owner || '');
-      if (newOwner && newOwner.trim()) {
-        await registryClient.updateDomainBinding(domainName, { owner: newOwner.trim() });
-        alert(`Domain ${domainName} transferred to ${newOwner}`);
-        await refreshDomainsList();
-      }
-    } else if (choice === '4') {
-      if (confirm(`Permanently delete domain ${domainName}? This cannot be undone.`)) {
-        await registryClient.deleteDomain(domainName);
-        alert(`Domain ${domainName} deleted`);
-        await refreshDomainsList();
-      }
+      // Add click handlers to app items
+      appsContainer.querySelectorAll('.bind-app-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const radio = item.querySelector('input[type="radio"]');
+          radio.checked = true;
+          selectedManifestId = item.dataset.manifestId;
+          
+          // Update UI
+          appsContainer.querySelectorAll('.bind-app-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+        });
+      });
     }
   } catch (error) {
-    alert(`Failed to edit domain: ${error.message || error}`);
+    alert(`Failed to load domain: ${error.message || error}`);
   }
 };
 
@@ -586,6 +768,8 @@ function activateView(viewId, { persist = true } = {}) {
     updateAppsPeerCounts().then(() => renderAppsList());
   } else if (viewId === 'domains') {
     refreshDomainsList();
+  } else if (viewId === 'bindings') {
+    refreshBindingsView();
   } else if (viewId === 'settings') {
     const settingsOwnerIdEl = document.getElementById('settingsOwnerId');
     if (settingsOwnerIdEl && authState?.ownerId) {
@@ -705,7 +889,7 @@ initBooleanToggle(toggleRegistryFallback, REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY, 
   notifyToggle('registry-fallback', value)
 );
 
-const publishFileInput = document.getElementById('publishFileInput');
+const oldPublishFileInput = document.getElementById('publishFileInput');
 const publishFileHint = document.getElementById('publishFileHint');
 const createManifestBtn = document.getElementById('createManifestBtn');
 const startReplicationBtn = document.getElementById('startReplicationBtn');
@@ -715,8 +899,8 @@ const replicationProgressPill = document.getElementById('replicationProgressPill
 let currentManifest = null;
 let replicationState = { acks: 0, target: 3, peers: [] };
 
-publishFileInput?.addEventListener('change', () => {
-  const files = publishFileInput.files;
+oldPublishFileInput?.addEventListener('change', () => {
+  const files = oldPublishFileInput.files;
   if (!files || files.length === 0) {
     publishFileHint.textContent = 'No file selected';
     createManifestBtn.disabled = true;
@@ -730,7 +914,7 @@ publishFileInput?.addEventListener('change', () => {
 });
 
 createManifestBtn?.addEventListener('click', async () => {
-  const files = publishFileInput.files;
+  const files = oldPublishFileInput.files;
   if (!files || files.length === 0) return;
   
   createManifestBtn.disabled = true;
@@ -850,8 +1034,10 @@ const publishNewAppBtn = document.getElementById('publishNewAppBtn');
 const publishModal = document.getElementById('publishModal');
 const closePublishModal = document.getElementById('closePublishModal');
 const publishFolderInput = document.getElementById('publishFolderInput');
+const publishFileInput = document.getElementById('publishFileInput');
 const selectFolderBtn = document.getElementById('selectFolderBtn');
-const selectedFolderName = document.getElementById('selectedFolderName');
+const selectFileBtn = document.getElementById('selectFileBtn');
+const selectedContentName = document.getElementById('selectedContentName');
 const startPublishBtn = document.getElementById('startPublishBtn');
 const cancelPublishBtn = document.getElementById('cancelPublishBtn');
 const modalDomainInput = document.getElementById('modalDomainInput');
@@ -865,12 +1051,18 @@ const domainSearchInput = document.getElementById('domainSearchInput');
 const registerNewDomainBtn = document.getElementById('registerNewDomainBtn');
 const refreshDomainsBtn = document.getElementById('refreshDomainsBtn');
 
-let selectedFolder = null;
+let selectedContent = null; // Can be file or folder
+let selectedContentType = null; // 'file' or 'folder'
 let currentPublishManifest = null;
 
 function saveAppsToStorage(apps) {
   try {
-    window.localStorage.setItem('dweb-published-apps', JSON.stringify(apps));
+    const safe = Array.isArray(apps) ? apps : [];
+    window.localStorage.setItem(APPS_STORAGE_KEY, JSON.stringify(safe));
+    window.localStorage.setItem(
+      APPS_BACKUP_STORAGE_KEY,
+      JSON.stringify({ apps: safe, savedAt: Date.now() })
+    );
   } catch {
     // ignore
   }
@@ -1023,8 +1215,9 @@ function hidePublishModal() {
 
 function resetPublishModal() {
   showPublishStep(1);
-  selectedFolder = null;
-  if (selectedFolderName) selectedFolderName.textContent = 'No folder selected';
+  selectedContent = null;
+  selectedContentType = null;
+  if (selectedContentName) selectedContentName.textContent = 'No content selected';
   if (startPublishBtn) startPublishBtn.disabled = true;
   if (modalDomainInput) modalDomainInput.value = '';
   if (domainAvailability) domainAvailability.textContent = '';
@@ -1041,6 +1234,17 @@ renderAppsList();
 
 publishNewAppBtn?.addEventListener('click', () => {
   showPublishModal();
+  
+  // Check and show connection status
+  const connectionBanner = document.getElementById('publishConnectionStatus');
+  if (connectionBanner) {
+    const hasPeers = connectionManager && peers && peers.length > 0;
+    if (!hasPeers) {
+      connectionBanner.classList.remove('hidden');
+    } else {
+      connectionBanner.classList.add('hidden');
+    }
+  }
 });
 
 closePublishModal?.addEventListener('click', hidePublishModal);
@@ -1050,34 +1254,64 @@ selectFolderBtn?.addEventListener('click', () => {
   publishFolderInput?.click();
 });
 
+selectFileBtn?.addEventListener('click', () => {
+  publishFileInput?.click();
+});
+
 publishFolderInput?.addEventListener('change', () => {
   const files = publishFolderInput.files;
   if (!files || files.length === 0) {
-    selectedFolder = null;
-    selectedFolderName.textContent = 'No folder selected';
+    selectedContent = null;
+    selectedContentType = null;
+    selectedContentName.textContent = 'No content selected';
     startPublishBtn.disabled = true;
     return;
   }
   
-  selectedFolder = files;
+  selectedContent = files;
+  selectedContentType = 'folder';
   const folderName = files[0].webkitRelativePath.split('/')[0] || 'Selected folder';
-  selectedFolderName.textContent = `${folderName} (${files.length} files)`;
+  selectedContentName.textContent = `📁 ${folderName} (${files.length} files)`;
+  startPublishBtn.disabled = false;
+});
+
+publishFileInput?.addEventListener('change', () => {
+  const files = publishFileInput.files;
+  if (!files || files.length === 0) {
+    selectedContent = null;
+    selectedContentType = null;
+    selectedContentName.textContent = 'No content selected';
+    startPublishBtn.disabled = true;
+    return;
+  }
+  
+  selectedContent = files[0]; // Single file
+  selectedContentType = 'file';
+  const fileName = files[0].name;
+  const fileSize = formatBytes(files[0].size);
+  selectedContentName.textContent = `📄 ${fileName} (${fileSize})`;
   startPublishBtn.disabled = false;
 });
 
 startPublishBtn?.addEventListener('click', async () => {
-  if (!selectedFolder) return;
+  if (!selectedContent) return;
   
   showPublishStep(2);
   
   try {
-    const files = Array.from(selectedFolder);
-    const firstFile = files[0];
+    let fileToPublish;
+    
+    if (selectedContentType === 'folder') {
+      const files = Array.from(selectedContent);
+      fileToPublish = files[0];
+    } else {
+      fileToPublish = selectedContent;
+    }
     
     document.getElementById('progressIcon1').textContent = '⏳';
     document.getElementById('progressText1').textContent = 'Preparing manifest...';
     
-    const { manifest, transfer } = await chunkManager.prepareTransfer(firstFile);
+    const { manifest, transfer } = await chunkManager.prepareTransfer(fileToPublish);
     
     document.getElementById('progressIcon1').textContent = '✓';
     document.getElementById('progressText1').textContent = 'Manifest created';
@@ -1085,7 +1319,7 @@ startPublishBtn?.addEventListener('click', async () => {
     currentPublishManifest = {
       manifestId: manifest.transferId,
       transferId: manifest.transferId,
-      fileName: firstFile.name,
+      fileName: fileToPublish.name,
       chunks: transfer.totalChunks,
       publishedAt: Date.now(),
       peerCount: 0,
@@ -1096,28 +1330,37 @@ startPublishBtn?.addEventListener('click', async () => {
     document.getElementById('progressIcon2').textContent = '⏳';
     document.getElementById('progressText2').textContent = 'Replicating to network...';
     
-    if (connectionManager && peers && peers.length > 0) {
+    // Try to replicate to peers if connected
+    const hasPeers = connectionManager && peers && peers.length > 0;
+    if (hasPeers) {
       const targetPeers = peers.slice(0, 3);
       for (const peer of targetPeers) {
-        connectionManager.sendJson({
-          type: 'replication-request',
-          manifestId: manifest.transferId,
-          manifest,
-          timestamp: Date.now()
-        }, peer.peerId);
+        try {
+          connectionManager.sendJson({
+            type: 'replication-request',
+            manifestId: manifest.transferId,
+            manifest,
+            timestamp: Date.now()
+          }, peer.peerId);
+        } catch (err) {
+          console.warn(`Failed to send to peer ${peer.peerId}:`, err);
+        }
       }
       currentPublishManifest.peerCount = targetPeers.length;
       document.getElementById('progressPeers').textContent = `${targetPeers.length}/3 peers`;
+    } else {
+      document.getElementById('progressPeers').textContent = '0 peers (no connections)';
     }
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    document.getElementById('progressIcon2').textContent = '✓';
-    document.getElementById('progressText2').textContent = 'Replicated';
+    document.getElementById('progressIcon2').textContent = hasPeers ? '✓' : '⚠️';
+    document.getElementById('progressText2').textContent = hasPeers ? 'Replicated' : 'No peers connected';
     
     document.getElementById('progressIcon3').textContent = '⏳';
     document.getElementById('progressText3').textContent = 'Registering manifest...';
     
+    // Register with registry server (doesn't require peer connections)
     await registerManifestWithRegistry(manifest, transfer);
     
     document.getElementById('progressIcon3').textContent = '✓';
@@ -1132,8 +1375,23 @@ startPublishBtn?.addEventListener('click', async () => {
     
     showPublishStep(3);
     
+    // Populate quick binding suggestions
+    try {
+      const result = await registryClient.listDomains();
+      const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+      populateDomainSuggestionLists(allDomains);
+    } catch {}
+    
   } catch (error) {
-    alert(`Publish failed: ${error.message || error}`);
+    console.error('Publish error:', error);
+    
+    // Show more helpful error message
+    let errorMsg = error.message || String(error);
+    if (errorMsg.includes('Data channel is not open')) {
+      errorMsg = 'Connection error: Please ensure you\'re connected to the network.\n\nTip: The background peer service should auto-connect. Check Settings > Background Peer Service.';
+    }
+    
+    alert(`Publish failed: ${errorMsg}`);
     hidePublishModal();
   }
 });
@@ -1158,6 +1416,297 @@ goToDomainsBtn?.addEventListener('click', () => {
   }
   hidePublishModal();
   activateView('domains');
+});
+
+// Quick domain binding from publish success
+const quickDomainInput = document.getElementById('quickDomainInput');
+const quickBindDomainBtn = document.getElementById('quickBindDomainBtn');
+
+quickBindDomainBtn?.addEventListener('click', async () => {
+  if (!currentPublishManifest) return;
+  
+  let domainName = quickDomainInput?.value.trim();
+  if (!domainName) {
+    alert('Please enter a domain name');
+    return;
+  }
+  
+  // Remove .dweb if user typed it
+  domainName = domainName.replace(/\.dweb$/i, '');
+  
+  // Validate domain name
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/i.test(domainName) && !/^[a-z0-9]$/i.test(domainName)) {
+    alert('Domain name can only contain letters, numbers, and hyphens\n(must start and end with letter or number)');
+    return;
+  }
+  
+  domainName = `${domainName}.dweb`;
+  
+  if (!authState?.ownerId) {
+    alert('Please authenticate first (click "Continue as guest" in welcome screen)');
+    return;
+  }
+  
+  try {
+    quickBindDomainBtn.disabled = true;
+    quickBindDomainBtn.textContent = 'Registering...';
+    
+    // Check if domain exists
+    const existing = await registryClient.getDomain(domainName);
+    if (existing) {
+      if (existing.owner === authState.ownerId) {
+        // If it's ours, just update the binding (reserved/unbound → bound)
+        await registryClient.updateDomainBinding(domainName, { manifestId: currentPublishManifest.manifestId });
+        currentPublishManifest.domain = domainName;
+        publishedApps.push(currentPublishManifest);
+        saveAppsToStorage(publishedApps);
+        renderAppsList();
+        alert(`✅ Domain ${domainName} bound to your app.`);
+        hidePublishModal();
+        quickBindDomainBtn.disabled = false;
+        quickBindDomainBtn.textContent = 'Register & Bind Domain';
+        return;
+      }
+      alert(`Domain ${domainName} is already registered by another owner`);
+      quickBindDomainBtn.disabled = false;
+      quickBindDomainBtn.textContent = 'Register & Bind Domain';
+      return;
+    }
+    
+    // Register and bind to current manifest
+    const payload = {
+      domain: domainName,
+      owner: authState.ownerId,
+      manifestId: currentPublishManifest.manifestId,
+      timestamp: Date.now()
+    };
+    
+    let finalPayload = payload;
+    try {
+      finalPayload = await signDomainOperation(payload);
+    } catch (signError) {
+      console.warn('[Domain] Crypto signing failed, registering without signature:', signError.message);
+    }
+    
+    await registryClient.registerDomain(finalPayload);
+    
+    // Update the published app with domain
+    currentPublishManifest.domain = domainName;
+    publishedApps.push(currentPublishManifest);
+    saveAppsToStorage(publishedApps);
+    renderAppsList();
+    
+    alert(`✅ Success!\n\nDomain ${domainName} is now bound to your app!\n\nYou can access it by navigating to: ${domainName}`);
+    hidePublishModal();
+    
+  } catch (error) {
+    alert(`Failed to register domain: ${error.message || error}`);
+    quickBindDomainBtn.disabled = false;
+    quickBindDomainBtn.textContent = 'Register & Bind Domain';
+  }
+});
+
+// Bindings page handlers
+const bindingAppSelect = document.getElementById('bindingAppSelect');
+const bindingDomainInput = document.getElementById('bindingDomainInput');
+const createBindingBtn = document.getElementById('createBindingBtn');
+const refreshBindingsBtn = document.getElementById('refreshBindingsBtn');
+
+// Update button state when inputs change
+const updateCreateBindingButton = () => {
+  if (createBindingBtn) {
+    const hasApp = bindingAppSelect?.value;
+    const hasDomain = bindingDomainInput?.value?.trim();
+    createBindingBtn.disabled = !hasApp || !hasDomain;
+  }
+};
+
+bindingAppSelect?.addEventListener('change', updateCreateBindingButton);
+bindingDomainInput?.addEventListener('input', updateCreateBindingButton);
+
+createBindingBtn?.addEventListener('click', async () => {
+  const manifestId = bindingAppSelect?.value;
+  let domainName = bindingDomainInput?.value?.trim();
+  
+  if (!manifestId || !domainName) return;
+  
+  // Remove .dweb if typed
+  domainName = domainName.replace(/\.dweb$/i, '');
+  
+  // Validate
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/i.test(domainName) && !/^[a-z0-9]$/i.test(domainName)) {
+    alert('Domain name can only contain letters, numbers, and hyphens\n(must start and end with letter or number)');
+    return;
+  }
+  
+  domainName = `${domainName}.dweb`;
+  
+  if (!authState?.ownerId) {
+    alert('Please authenticate first');
+    return;
+  }
+  
+  try {
+    createBindingBtn.disabled = true;
+    createBindingBtn.textContent = 'Creating...';
+    
+    // Check if domain exists
+    const existing = await registryClient.getDomain(domainName);
+    if (existing) {
+      // Domain exists - check if it's ours and update binding
+      if (existing.owner === authState.ownerId) {
+        await registryClient.updateDomainBinding(domainName, { manifestId });
+        alert(`✅ Domain ${domainName} bound to your app!`);
+      } else {
+        alert(`Domain ${domainName} is owned by someone else`);
+        createBindingBtn.disabled = false;
+        createBindingBtn.textContent = 'Register Domain & Create Binding';
+        return;
+      }
+    } else {
+      // Register new domain
+      const payload = {
+        domain: domainName,
+        owner: authState.ownerId,
+        manifestId,
+        timestamp: Date.now()
+      };
+      
+      let finalPayload = payload;
+      try {
+        finalPayload = await signDomainOperation(payload);
+      } catch (signError) {
+        console.warn('[Domain] Crypto signing failed:', signError.message);
+      }
+      
+      await registryClient.registerDomain(finalPayload);
+      alert(`✅ Domain ${domainName} registered and bound!`);
+    }
+    
+    // Update app with domain
+    const app = publishedApps.find(a => a.manifestId === manifestId);
+    if (app) {
+      app.domain = domainName;
+      saveAppsToStorage(publishedApps);
+    }
+    
+    // Reset form
+    bindingAppSelect.value = '';
+    bindingDomainInput.value = '';
+    createBindingBtn.disabled = true;
+    createBindingBtn.textContent = 'Register Domain & Create Binding';
+    
+    // Refresh bindings list
+    await renderBindingsList();
+    
+  } catch (error) {
+    alert(`Failed to create binding: ${error.message || error}`);
+    createBindingBtn.disabled = false;
+    createBindingBtn.textContent = 'Register Domain & Create Binding';
+  }
+});
+
+refreshBindingsBtn?.addEventListener('click', renderBindingsList);
+
+// Domain bind modal handlers
+const domainBindModal = document.getElementById('domainBindModal');
+const closeDomainBindModal = document.getElementById('closeDomainBindModal');
+const cancelDomainBindBtn = document.getElementById('cancelDomainBindBtn');
+const saveDomainBindBtn = document.getElementById('saveDomainBindBtn');
+const unbindDomainModalBtn = document.getElementById('unbindDomainModalBtn');
+const transferDomainModalBtn = document.getElementById('transferDomainModalBtn');
+const deleteDomainModalBtn = document.getElementById('deleteDomainModalBtn');
+
+function closeDomainBindModalFn() {
+  domainBindModal?.classList.add('hidden');
+  currentEditingDomain = null;
+  selectedManifestId = null;
+}
+
+closeDomainBindModal?.addEventListener('click', closeDomainBindModalFn);
+cancelDomainBindBtn?.addEventListener('click', closeDomainBindModalFn);
+
+saveDomainBindBtn?.addEventListener('click', async () => {
+  if (!currentEditingDomain) return;
+  
+  const domainName = currentEditingDomain.domain;
+  
+  try {
+    saveDomainBindBtn.disabled = true;
+    
+    // Update binding if selection changed
+    const currentBinding = currentEditingDomain.manifestId && currentEditingDomain.manifestId !== 'unbound' 
+      ? currentEditingDomain.manifestId 
+      : null;
+    
+    if (selectedManifestId !== currentBinding) {
+      const newManifestId = selectedManifestId || 'unbound';
+      await registryClient.updateDomainBinding(domainName, { manifestId: newManifestId });
+      
+      if (selectedManifestId) {
+        alert(`✅ Domain ${domainName} bound to:\n${selectedManifestId}`);
+      } else {
+        alert(`Domain ${domainName} is now unbound`);
+      }
+    }
+    
+    closeDomainBindModalFn();
+    await refreshDomainsList();
+  } catch (error) {
+    alert(`Failed to update domain: ${error.message || error}`);
+  } finally {
+    saveDomainBindBtn.disabled = false;
+  }
+});
+
+unbindDomainModalBtn?.addEventListener('click', async () => {
+  if (!currentEditingDomain) return;
+  
+  const domainName = currentEditingDomain.domain;
+  if (!confirm(`Unbind domain ${domainName}? It will become reserved (unbound).`)) return;
+  
+  try {
+    await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
+    alert(`Domain ${domainName} is now unbound`);
+    closeDomainBindModalFn();
+    await refreshDomainsList();
+  } catch (error) {
+    alert(`Failed to unbind domain: ${error.message || error}`);
+  }
+});
+
+transferDomainModalBtn?.addEventListener('click', async () => {
+  if (!currentEditingDomain) return;
+  
+  const domainName = currentEditingDomain.domain;
+  const newOwner = prompt('Enter new owner ID:', currentEditingDomain.owner || '');
+  
+  if (!newOwner || !newOwner.trim()) return;
+  
+  try {
+    await registryClient.updateDomainBinding(domainName, { owner: newOwner.trim() });
+    alert(`Domain ${domainName} transferred to ${newOwner}`);
+    closeDomainBindModalFn();
+    await refreshDomainsList();
+  } catch (error) {
+    alert(`Failed to transfer domain: ${error.message || error}`);
+  }
+});
+
+deleteDomainModalBtn?.addEventListener('click', async () => {
+  if (!currentEditingDomain) return;
+  
+  const domainName = currentEditingDomain.domain;
+  if (!confirm(`Permanently delete domain ${domainName}? This cannot be undone.`)) return;
+  
+  try {
+    await registryClient.deleteDomain(domainName);
+    alert(`Domain ${domainName} deleted`);
+    closeDomainBindModalFn();
+    await refreshDomainsList();
+  } catch (error) {
+    alert(`Failed to delete domain: ${error.message || error}`);
+  }
 });
 
 // Domain binding removed from publish flow - now done via Domains page

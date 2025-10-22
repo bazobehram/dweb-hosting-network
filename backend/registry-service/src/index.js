@@ -132,8 +132,8 @@ app.setErrorHandler((error, request, reply) => {
 
 app.register(cors, {
   origin: true,
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization'],
   credentials: false
 })
   .then(() => {

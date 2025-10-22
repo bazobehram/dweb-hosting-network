@@ -13,16 +13,39 @@
         
         <div id="publishStep1" class="publish-step-view active">
           <h2>Publish Application</h2>
-          <p class="modal-subtitle">Step 1: Select your app folder</p>
+          <p class="modal-subtitle">Step 1: Select your content</p>
           
-          <div class="folder-picker">
-            <input id="publishFolderInput" type="file" webkitdirectory directory multiple style="display:none;" />
-            <button id="selectFolderBtn" class="folder-picker-btn">
-              <span class="folder-icon">📁</span>
-              <span>Choose Folder</span>
-            </button>
-            <p id="selectedFolderName" class="selected-folder-hint">No folder selected</p>
+          <div id="publishConnectionStatus" class="connection-status-banner hidden">
+            <span class="status-icon">⚠️</span>
+            <div class="status-text">
+              <strong>No peer connections</strong>
+              <p>Your content will be stored in the registry but not replicated. Enable background peer service in Settings for better availability.</p>
+            </div>
           </div>
+          
+          <div class="upload-options">
+            <div class="folder-picker">
+              <input id="publishFolderInput" type="file" webkitdirectory directory multiple style="display:none;" />
+              <button id="selectFolderBtn" class="folder-picker-btn">
+                <span class="folder-icon">📁</span>
+                <span>Choose Folder</span>
+              </button>
+            </div>
+            
+            <div class="file-picker-divider">
+              <span>or</span>
+            </div>
+            
+            <div class="file-picker">
+              <input id="publishFileInput" type="file" style="display:none;" />
+              <button id="selectFileBtn" class="file-picker-btn">
+                <span class="file-icon">📄</span>
+                <span>Choose File</span>
+              </button>
+            </div>
+          </div>
+          
+          <p id="selectedContentName" class="selected-content-hint">No content selected</p>
           
           <div class="modal-actions">
             <button id="cancelPublishBtn" class="secondary">Cancel</button>
@@ -59,17 +82,20 @@
             <p><strong>Replicated to:</strong> <span id="publishedPeers">—</span> peers</p>
           </div>
           
-          <div class="next-steps">
-            <h3>Next Steps:</h3>
-            <ul>
-              <li>Go to <strong>Domains</strong> tab to register a .dweb domain</li>
-              <li>Then bind your domain to this manifest</li>
-              <li>Finally, open your domain in the browser!</li>
-            </ul>
+          <div class="quick-domain-binding">
+            <h3>Bind to Domain (Optional)</h3>
+            <p class="hint">Connect this app to a .dweb domain to make it accessible via a friendly URL</p>
+            
+            <div class="domain-input-group">
+              <input id="quickDomainInput" list="quickDomainsList" type="text" placeholder="my-app" style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" />
+              <span class="domain-suffix">.dweb</span>
+              <datalist id="quickDomainsList"></datalist>
+            </div>
+            <button id="quickBindDomainBtn" class="primary" style="width: 100%; margin-top: 12px;">Register & Bind Domain</button>
           </div>
           
           <div class="modal-actions">
-            <button id="closeSuccessBtn" class="primary">Done</button>
+            <button id="closeSuccessBtn" class="secondary">Done</button>
             <button id="goToDomainsBtn" class="secondary">Manage Domains →</button>
           </div>
         </div>
@@ -89,6 +115,36 @@
       </div>
     </div>
 
+    <div id="domainBindModal" class="modal-overlay hidden">
+      <div class="modal-content domain-bind-modal">
+        <button class="modal-close" id="closeDomainBindModal">&times;</button>
+        
+        <h2>Edit Domain: <span id="bindModalDomainName"></span></h2>
+        <p class="modal-subtitle">Manage domain binding and ownership</p>
+        
+        <div class="domain-bind-section">
+          <h3>Bind to Application</h3>
+          <div id="bindAppsContainer" class="bind-apps-container">
+            <p class="empty-hint">Loading published apps...</p>
+          </div>
+        </div>
+        
+        <div class="domain-actions-section">
+          <h3>Other Actions</h3>
+          <div class="action-buttons-grid">
+            <button id="unbindDomainModalBtn" class="secondary">Unbind Domain</button>
+            <button id="transferDomainModalBtn" class="secondary">Transfer Ownership</button>
+            <button id="deleteDomainModalBtn" class="danger">Delete Domain</button>
+          </div>
+        </div>
+        
+        <div class="modal-actions">
+          <button id="cancelDomainBindBtn" class="secondary">Cancel</button>
+          <button id="saveDomainBindBtn" class="primary">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel-shell">
       <aside class="sidebar">
         <div class="sidebar-header">
@@ -101,8 +157,9 @@
 
         <nav class="sidebar-nav">
           <button class="nav-item active" data-view="dashboard">Dashboard</button>
-          <button class="nav-item" data-view="hosting">Hosting</button>
+<button class="nav-item" data-view="hosting">Publish</button>
           <button class="nav-item" data-view="domains">Domains</button>
+          <button class="nav-item" data-view="bindings">Bindings</button>
           <button class="nav-item" data-view="settings">Settings</button>
         </nav>
 
@@ -202,7 +259,7 @@
         </section>
         
         <section id="view-hosting" class="view">
-          <h2 class="view-title">Hosting</h2>
+<h2 class="view-title">Publish & Replicate</h2>
           
           <div class="hosting-hero">
             <button id="publishNewAppBtn" class="publish-hero-btn">
@@ -375,7 +432,7 @@
 
           <div class="card">
             <header>
-              <h3>Bind to Domain</h3>
+<h3>Quick Domain Binding</h3>
               <div class="pill-group">
                 <span class="pill" id="domainBindStatus">No domain bound</span>
               </div>
@@ -387,6 +444,7 @@
               <label for="ownerInput">Owner ID</label>
               <input id="ownerInput" type="text" placeholder="user-123" />
             </div>
+<p class="hint">Optional. For full management (transfer/delete/unbind), use the Domains or Bindings pages.</p>
             <div class="domain-actions">
               <button id="registerDomainBtn" class="primary" disabled>Bind Domain</button>
             </div>
@@ -402,10 +460,9 @@
             </header>
             <div class="domain-toolbar">
               <div class="domain-input-group">
-                <input id="domainSearchInput" type="text" placeholder="example" style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" />
-                <select style="border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--bg-secondary); color: var(--text); padding: 0.5rem; min-width: 100px;" disabled>
-                  <option>.dweb</option>
-                </select>
+                <input id="domainSearchInput" list="searchDomainsList" type="text" placeholder="example" style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" />
+                <span class="domain-suffix">.dweb</span>
+                <datalist id="searchDomainsList"></datalist>
               </div>
               <button id="registerNewDomainBtn" class="primary">Register Domain</button>
             </div>
@@ -421,6 +478,56 @@
               </thead>
               <tbody id="domainsTableBody"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="view-bindings" class="view">
+          <h2 class="view-title">Apps & Domain Bindings</h2>
+          <p class="view-subtitle">Connect your published apps to .dweb domains</p>
+          
+          <div class="card">
+            <header>
+              <h3>Create New Binding</h3>
+            </header>
+            
+            <div class="binding-creator">
+              <div class="binding-row">
+                <div class="binding-column">
+                  <label>Select App</label>
+                  <select id="bindingAppSelect" class="binding-select">
+                    <option value="">-- Choose published app --</option>
+                  </select>
+                </div>
+                
+                <div class="binding-arrow">→</div>
+                
+                <div class="binding-column">
+                  <label>Enter Domain</label>
+                  <div class="domain-input-group">
+                    <input id="bindingDomainInput" list="bindingDomainsList" type="text" placeholder="my-app" style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" />
+                    <span class="domain-suffix">.dweb</span>
+                    <datalist id="bindingDomainsList"></datalist>
+                  </div>
+                </div>
+              </div>
+              
+              <button id="createBindingBtn" class="primary" style="width: 100%; margin-top: 20px;" disabled>Register Domain & Create Binding</button>
+            </div>
+          </div>
+          
+          <div class="card">
+            <header>
+              <h3>Your Bindings</h3>
+              <button id="refreshBindingsBtn" class="secondary-button small">Refresh</button>
+            </header>
+            
+            <div id="bindingsTableContainer" class="bindings-table-container">
+              <div class="empty-state">
+                <p class="empty-icon">🔗</p>
+                <p class="empty-text">No bindings yet</p>
+                <p class="empty-hint">Create a binding above to connect an app to a domain</p>
+              </div>
+            </div>
           </div>
         </section>
 

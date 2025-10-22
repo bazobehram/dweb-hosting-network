@@ -179,6 +179,21 @@ export class RegistryClient {
     }
     return response.json();
   }
+
+  async deleteDomain(domain) {
+    const response = await fetch(`${this.baseUrl}/domains/${encodeURIComponent(domain)}`, {
+      method: 'DELETE',
+      headers: this.withAuthHeaders({ Accept: 'application/json' })
+    });
+    if (response.status === 404) {
+      return { deleted: false };
+    }
+    if (!response.ok) {
+      const error = await safeJson(response);
+      throw new Error(error?.error ?? `Domain delete failed (${response.status})`);
+    }
+    return response.json();
+  }
 }
 
 function sanitizeBaseUrl(value) {

@@ -139,6 +139,12 @@ resolveBtn.addEventListener("click", async () => {
       return;
     }
 
+    if (!record.manifestId || String(record.manifestId).toLowerCase() === 'unbound') {
+      appendLog(`Domain ${domain} is not bound to any content.`);
+      emitResolveSummary({ manifestId: null, domain, failureReason: 'domain-unbound' });
+      return;
+    }
+
     appendLog(
       `Manifest ${record.manifestId} with ${record.replicas?.length ?? 0} replicas`
     );

@@ -319,6 +319,24 @@ export function registerRoutes(app, store, helpers = {}) {
     return record;
   });
 
+  app.delete('/domains/:domain', async (request, reply) => {
+    const { domain } = request.params;
+    try {
+      const deleted = store.deleteDomain(domain);
+      return { domain: deleted.domain, deleted: true };
+    } catch (error) {
+      if (error.message === 'DOMAIN_NOT_FOUND') {
+        return respondError(reply, {
+          statusCode: 404,
+          error: 'DOMAIN_NOT_FOUND',
+          context: 'delete-domain',
+          domain
+        });
+      }
+      throw error;
+    }
+  });
+
   app.post('/maintenance/prune-pointers', async (request) => {
     const now = request.body?.now;
     const timestamp = typeof now === 'number' && Number.isFinite(now) ? now : Date.now();

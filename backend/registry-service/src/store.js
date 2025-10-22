@@ -486,6 +486,17 @@ export class RegistryStore {
     return record;
   }
 
+  deleteDomain(domainName) {
+    const normalized = normalizeDomain(domainName);
+    const existing = this.getOne(`SELECT domain FROM domains WHERE domain = ?`, [normalized]);
+    if (!existing) {
+      throw new Error('DOMAIN_NOT_FOUND');
+    }
+    this.run(`DELETE FROM domains WHERE domain = ?`, [normalized]);
+    this.persist();
+    return { domain: normalized };
+  }
+
   listDomains() {
     return this.getAll(`SELECT * FROM domains ORDER BY domain ASC`).map((row) => {
       const record = {
