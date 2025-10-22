@@ -2,6 +2,14 @@ import { WebRTCConnectionManager } from '../scripts/webrtc/connectionManager.js'
 import { ChunkManager } from '../scripts/webrtc/chunkManager.js';
 import { RegistryClient } from '../scripts/api/registryClient.js';
 import { TelemetryClient } from '../scripts/telemetry/telemetryClient.js';
+import {
+  generateKeypair,
+  deriveOwnerIdFromPublicKey,
+  exportPublicKey,
+  signMessage,
+  storeKeypair,
+  loadKeypair
+} from '../scripts/crypto/identity.js';
 
 const navButtons = document.querySelectorAll('.nav-item');
 const views = document.querySelectorAll('.view');
@@ -74,6 +82,18 @@ let telemetry = null;
 let registryClient = null;
 let chunkManager = null;
 
+// Early initialization for apps list
+function loadAppsFromStorage() {
+  try {
+    const raw = window.localStorage.getItem('dweb-published-apps');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+let publishedApps = loadAppsFromStorage();
+
 if (domainBindStatus) {
   domainBindStatus.textContent = 'No domain bound';
 }
@@ -127,12 +147,32 @@ if (authState?.ownerId) {
   showAuthOverlay();
 }
 
-authGuestBtn?.addEventListener('click', () => {
-  const ownerId = generateOwnerId();
-  authState = { method: 'guest', ownerId, authenticatedAt: Date.now() };
-  persistAuthState(authState);
-  updateOwnerBadge(ownerId);
-  hideAuthOverlay();
+authGuestBtn?.addEventListener('click', async () => {
+  try {
+    // Generate cryptographic keypair
+    const keypair = await generateKeypair();
+    const ownerId = await deriveOwnerIdFromPublicKey(keypair.publicKey);
+    const publicKeyBase64 = await exportPublicKey(keypair.publicKey);
+    
+    // Store keypair securely
+    await storeKeypair(ownerId, keypair);
+    
+    authState = {
+      method: 'cryptographic',
+      ownerId,
+      publicKey: publicKeyBase64,
+      authenticatedAt: Date.now()
+    };
+    
+    persistAuthState(authState);
+    updateOwnerBadge(ownerId);
+    hideAuthOverlay();
+    
+    console.log('[Auth] Cryptographic identity created:', ownerId);
+  } catch (error) {
+    console.error('[Auth] Failed to create identity:', error);
+    alert(`Failed to create identity: ${error.message}`);
+  }
 });
 
 authPasskeyBtn?.addEventListener('click', () => {
@@ -192,6 +232,49 @@ openResolverFromSidebar?.addEventListener('click', () => {
   chrome.tabs.create({ url });
 });
 
+async function refreshDashboardOverview() {
+  // Update stats
+  const appsCountEl = document.getElementById('dashboardAppsCount');
+  const domainsCountEl = document.getElementById('dashboardDomainsCount');
+  const peersCountEl = document.getElementById('dashboardPeersCount');
+  const networkStatusEl = document.getElementById('dashboardNetworkStatus');
+  
+  if (appsCountEl) appsCountEl.textContent = publishedApps.length;
+  
+  if (domainsCountEl) {
+    try {
+      const result = await registryClient.listDomains();
+      const list = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+      domainsCountEl.textContent = list.length;
+    } catch {
+      domainsCountEl.textContent = '0';
+    }
+  }
+  
+  if (peersCountEl) {
+    peersCountEl.textContent = peers ? peers.length : '0';
+  }
+  
+  if (networkStatusEl) {
+    const status = sidebarStatusBadge?.textContent || 'Unknown';
+    networkStatusEl.textContent = status;
+    networkStatusEl.className = 'stat-value ' + (sidebarStatusBadge?.className.split(' ').find(c => c.startsWith('status-')) || '');
+  }
+  
+  // Add recent activity
+  const activityEl = document.getElementById('dashboardActivity');
+  if (activityEl && publishedApps.length > 0) {
+    const recentApps = publishedApps.slice(-3).reverse();
+    activityEl.innerHTML = recentApps.map(app => `
+      <div class="activity-item">
+        <span class="activity-icon">📦</span>
+        <span class="activity-text">Published ${app.fileName || app.manifestId.slice(0, 12)}</span>
+        <span class="activity-time">${timeAgo(app.publishedAt)}</span>
+      </div>
+    `).join('');
+  }
+}
+
 async function refreshDashboardMetrics() {
   const directRatioCard = document.getElementById('metricDirectRate');
   const ttfbP50Card = document.getElementById('metricTtfb');
@@ -235,25 +318,51 @@ async function refreshDomainsList() {
   if (!domainsTableBody) return;
   
   try {
-    const list = await registryClient.listDomains();
+    const result = await registryClient.listDomains();
     domainsTableBody.innerHTML = '';
     
-    if (!list || !Array.isArray(list.domains) || list.domains.length === 0) {
-      domainsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No domains found</td></tr>';
+    const list = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+    
+    if (list.length === 0) {
+      domainsTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8c93ab;">No domains registered</td></tr>';
       return;
     }
     
-    list.domains.forEach((domain) => {
+    list.forEach((domain) => {
       const row = domainsTableBody.insertRow();
+      const isBound = Boolean(domain.manifestId);
+      const statusClass = isBound ? 'status-bound' : 'status-unbound';
+      const statusText = isBound ? 'Bound' : 'Reserved';
+      const updatedDate = domain.updatedAt ? new Date(domain.updatedAt).toLocaleString() : '—';
+      const manifestIdShort = domain.manifestId ? domain.manifestId.slice(0, 12) + '...' : '—';
+      
       row.innerHTML = `
-        <td>${escapeHtml(domain.domain ?? '—')}</td>
-        <td>${escapeHtml(domain.manifestId ?? 'Unbound')}</td>
-        <td><span class="status-badge status-${domain.status ?? 'unknown'}">${domain.status ?? 'unknown'}</span></td>
-        <td><button class="small-btn" data-domain="${escapeHtml(domain.domain ?? '')}" onclick="unbindDomain(this)">Unbind</button></td>
+        <td><strong>${escapeHtml(domain.domain ?? '—')}</strong></td>
+        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+        <td title="${escapeHtml(domain.manifestId ?? '')}">${escapeHtml(manifestIdShort)}</td>
+        <td>${updatedDate}</td>
+        <td>
+          <button class="secondary small" data-action="edit" data-domain="${escapeHtml(domain.domain ?? '')}">Edit</button>
+          ${isBound ? `<button class="secondary small" data-action="open" data-domain="${escapeHtml(domain.domain ?? '')}">Open</button>` : ''}
+        </td>
       `;
+      
+      // Attach event listeners
+      const buttons = row.querySelectorAll('button[data-action]');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          const domainName = btn.dataset.domain;
+          if (action === 'edit') {
+            window.editDomain(domainName);
+          } else if (action === 'open') {
+            window.openAppDomain(domainName);
+          }
+        });
+      });
     });
   } catch (error) {
-    domainsTableBody.innerHTML = `<tr><td colspan="4" style="color:var(--danger);text-align:center;">Error: ${escapeHtml(error.message ?? error)}</td></tr>`;
+    domainsTableBody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);text-align:center;">Error: ${escapeHtml(error.message ?? error)}</td></tr>`;
   }
 }
 
@@ -299,6 +408,50 @@ window.unbindDomain = async function (button) {
     await refreshDomainsList();
   } catch (error) {
     appendRegistryLog(`Failed to unbind ${domain}: ${error.message ?? error}`);
+  }
+};
+
+window.editDomain = async function(domainName) {
+  if (!domainName) return;
+  
+  try {
+    const domain = await registryClient.getDomain(domainName);
+    if (!domain) {
+      alert(`Domain ${domainName} not found`);
+      return;
+    }
+    
+    let action = 'Select action:\n\n';
+    action += '1. Rebind to different manifest\n';
+    action += '2. Update domain metadata\n';
+    action += '3. Transfer ownership\n';
+    action += '4. Delete domain\n';
+    
+    const choice = prompt(action, '1');
+    
+    if (choice === '1') {
+      const newManifestId = prompt('Enter new manifest ID:', domain.manifestId || '');
+      if (newManifestId && newManifestId.trim()) {
+        await registryClient.updateDomainBinding(domainName, { manifestId: newManifestId.trim() });
+        alert(`Domain ${domainName} rebound to ${newManifestId}`);
+        await refreshDomainsList();
+      }
+    } else if (choice === '3') {
+      const newOwner = prompt('Enter new owner ID:', domain.owner || '');
+      if (newOwner && newOwner.trim()) {
+        await registryClient.updateDomainBinding(domainName, { owner: newOwner.trim() });
+        alert(`Domain ${domainName} transferred to ${newOwner}`);
+        await refreshDomainsList();
+      }
+    } else if (choice === '4') {
+      if (confirm(`Permanently delete domain ${domainName}? This cannot be undone.`)) {
+        await registryClient.deleteDomain(domainName);
+        alert(`Domain ${domainName} deleted`);
+        await refreshDomainsList();
+      }
+    }
+  } catch (error) {
+    alert(`Failed to edit domain: ${error.message || error}`);
   }
 };
 
@@ -386,13 +539,16 @@ function activateView(viewId, { persist = true } = {}) {
   navButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === viewId));
   
   if (viewId === 'dashboard') {
-    refreshDashboardMetrics();
+    refreshDashboardOverview();
+  } else if (viewId === 'hosting') {
+    updateAppsPeerCounts().then(() => renderAppsList());
   } else if (viewId === 'domains') {
     refreshDomainsList();
-  } else if (viewId === 'peers') {
-    refreshPeersTable();
-  } else if (viewId === 'activity') {
-    refreshActivityView();
+  } else if (viewId === 'settings') {
+    const settingsOwnerIdEl = document.getElementById('settingsOwnerId');
+    if (settingsOwnerIdEl && authState?.ownerId) {
+      settingsOwnerIdEl.textContent = authState.ownerId;
+    }
   }
   
   if (persist) {
@@ -412,6 +568,20 @@ navButtons.forEach((button) => {
 
 selectionExportJson?.addEventListener('click', exportSelectionLogAsJson);
 selectionExportCsv?.addEventListener('click', exportSelectionLogAsCsv);
+
+// Quick action buttons on dashboard
+document.querySelectorAll('.action-btn[data-goto]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetView = btn.dataset.goto;
+    if (targetView) activateView(targetView);
+  });
+});
+
+const openResolverDashboard = document.getElementById('openResolverDashboard');
+openResolverDashboard?.addEventListener('click', () => {
+  const url = chrome.runtime.getURL('resolver/index.html');
+  chrome.tabs.create({ url });
+});
 
 const storedView = (() => {
   try {
@@ -650,21 +820,11 @@ const domainAvailability = document.getElementById('domainAvailability');
 const appsList = document.getElementById('appsList');
 
 const domainSearchInput = document.getElementById('domainSearchInput');
-const addDomainBtn = document.getElementById('addDomainBtn');
+const registerNewDomainBtn = document.getElementById('registerNewDomainBtn');
 const refreshDomainsBtn = document.getElementById('refreshDomainsBtn');
 
-let publishedApps = [];
 let selectedFolder = null;
 let currentPublishManifest = null;
-
-function loadAppsFromStorage() {
-  try {
-    const raw = window.localStorage.getItem('dweb-published-apps');
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
 
 function saveAppsToStorage(apps) {
   try {
@@ -672,6 +832,21 @@ function saveAppsToStorage(apps) {
   } catch {
     // ignore
   }
+}
+
+async function updateAppsPeerCounts() {
+  for (const app of publishedApps) {
+    if (!app.manifestId) continue;
+    try {
+      const manifest = await registryClient.getManifest(app.manifestId);
+      if (manifest && Array.isArray(manifest.replicas)) {
+        app.peerCount = manifest.replicas.length;
+      }
+    } catch {
+      // Silently ignore errors
+    }
+  }
+  saveAppsToStorage(publishedApps);
 }
 
 function renderAppsList() {
@@ -699,20 +874,49 @@ function renderAppsList() {
     const timeSince = Math.floor((Date.now() - app.publishedAt) / 1000 / 60);
     const timeText = timeSince < 60 ? `${timeSince}m ago` : `${Math.floor(timeSince / 60)}h ago`;
     
+    const statusBadge = app.domain 
+      ? '<span class="status-badge status-bound">Bound</span>' 
+      : '<span class="status-badge status-unbound">Unbound</span>';
+    
     item.innerHTML = `
       <div class="app-info">
-        <div class="app-name ${domainClass}">${escapeHtml(domainDisplay)}</div>
-        <div class="app-meta">
-          <span>Published ${timeText}</span>
-          <span>${app.chunks || 0} chunks</span>
-          <span>${app.peerCount || 0} peers</span>
+        <div class="app-header">
+          <div class="app-name ${domainClass}">${escapeHtml(domainDisplay)}</div>
+          ${statusBadge}
         </div>
+        <div class="app-meta">
+          <span title="Published time">📅 ${timeText}</span>
+          <span title="Total chunks">${app.chunks || 0} chunks</span>
+          <span title="Connected peers">👥 ${app.peerCount || 0} peers</span>
+        </div>
+        ${app.manifestId ? `<div class="app-manifest-id" title="Manifest ID">ID: ${escapeHtml(app.manifestId.slice(0, 16))}...</div>` : ''}
       </div>
       <div class="app-actions">
-        ${app.domain ? `<button class="secondary small" onclick="openAppDomain('${escapeHtml(app.domain)}')">Open</button>` : `<button class="secondary small" onclick="bindAppDomain('${escapeHtml(app.manifestId)}')">Bind Domain</button>`}
-        <button class="secondary small" onclick="removeApp('${escapeHtml(app.manifestId)}')">⚙️</button>
+        ${app.domain ? `<button class="secondary small" data-action="open" data-domain="${escapeHtml(app.domain)}">Open</button>` : `<button class="secondary small" data-action="bind" data-manifest="${escapeHtml(app.manifestId)}">Bind Domain</button>`}
+        <button class="secondary small" data-action="details" data-manifest="${escapeHtml(app.manifestId)}" title="Details">ⓘ</button>
+        <button class="secondary small" data-action="remove" data-manifest="${escapeHtml(app.manifestId)}" title="Remove">🗑</button>
       </div>
     `;
+    
+    // Attach event listeners to buttons
+    const buttons = item.querySelectorAll('button[data-action]');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const domain = btn.dataset.domain;
+        const manifestId = btn.dataset.manifest;
+        
+        if (action === 'open' && domain) {
+          window.openAppDomain(domain);
+        } else if (action === 'bind' && manifestId) {
+          window.bindAppDomain(manifestId);
+        } else if (action === 'details' && manifestId) {
+          window.showAppDetails(manifestId);
+        } else if (action === 'remove' && manifestId) {
+          window.removeApp(manifestId);
+        }
+      });
+    });
     
     appsList.appendChild(item);
   });
@@ -733,10 +937,37 @@ window.bindAppDomain = function(manifestId) {
 };
 
 window.removeApp = function(manifestId) {
-  if (!confirm('Remove this app?')) return;
+  if (!confirm('Remove this app from the list? This will not delete the manifest from the network.')) return;
   publishedApps = publishedApps.filter(a => a.manifestId !== manifestId);
   saveAppsToStorage(publishedApps);
   renderAppsList();
+};
+
+window.showAppDetails = async function(manifestId) {
+  const app = publishedApps.find(a => a.manifestId === manifestId);
+  if (!app) return;
+  
+  let details = `Manifest ID: ${app.manifestId}\n`;
+  details += `Published: ${new Date(app.publishedAt).toLocaleString()}\n`;
+  details += `Chunks: ${app.chunks || 0}\n`;
+  details += `Domain: ${app.domain || 'Not bound'}\n`;
+  details += `Connected Peers: ${app.peerCount || 0}\n`;
+  
+  try {
+    const manifest = await registryClient.getManifest(manifestId);
+    if (manifest) {
+      details += `\nFile Name: ${manifest.fileName || 'N/A'}\n`;
+      details += `File Size: ${formatBytes(manifest.fileSize || 0)}\n`;
+      details += `MIME Type: ${manifest.mimeType || 'N/A'}\n`;
+      if (Array.isArray(manifest.replicas)) {
+        details += `\nReplica Peers:\n${manifest.replicas.map(p => `  - ${p}`).join('\n')}`;
+      }
+    }
+  } catch (error) {
+    details += `\nError fetching details: ${error.message}`;
+  }
+  
+  alert(details);
 };
 
 function showPublishModal() {
@@ -764,7 +995,6 @@ function showPublishStep(step) {
   });
 }
 
-publishedApps = loadAppsFromStorage();
 renderAppsList();
 
 publishNewAppBtn?.addEventListener('click', () => {
@@ -812,10 +1042,13 @@ startPublishBtn?.addEventListener('click', async () => {
     
     currentPublishManifest = {
       manifestId: manifest.transferId,
+      transferId: manifest.transferId,
       fileName: firstFile.name,
       chunks: transfer.totalChunks,
       publishedAt: Date.now(),
-      peerCount: 0
+      peerCount: 0,
+      _transfer: transfer,
+      _manifest: manifest
     };
     
     document.getElementById('progressIcon2').textContent = '⏳';
@@ -843,10 +1076,15 @@ startPublishBtn?.addEventListener('click', async () => {
     document.getElementById('progressIcon3').textContent = '⏳';
     document.getElementById('progressText3').textContent = 'Registering manifest...';
     
-    await registerManifestWithRegistry(manifest);
+    await registerManifestWithRegistry(manifest, transfer);
     
     document.getElementById('progressIcon3').textContent = '✓';
     document.getElementById('progressText3').textContent = 'Registered';
+    
+    // Show success step
+    document.getElementById('publishedManifestId').textContent = manifest.transferId;
+    document.getElementById('publishedChunks').textContent = transfer.totalChunks;
+    document.getElementById('publishedPeers').textContent = currentPublishManifest.peerCount || 0;
     
     await new Promise(resolve => setTimeout(resolve, 500));
     
@@ -858,84 +1096,10 @@ startPublishBtn?.addEventListener('click', async () => {
   }
 });
 
-checkDomainBtn?.addEventListener('click', async () => {
-  const domain = modalDomainInput?.value.trim();
-  if (!domain) return;
-  
-  const fullDomain = `${domain}.dweb`;
-  
-  try {
-    checkDomainBtn.disabled = true;
-    checkDomainBtn.textContent = '...';
-    
-    const existing = await registryClient.getDomain(fullDomain);
-    
-    if (existing) {
-      domainAvailability.textContent = `${fullDomain} is already taken`;
-      domainAvailability.className = 'domain-hint taken';
-      bindDomainBtn.disabled = true;
-    } else {
-      domainAvailability.textContent = `${fullDomain} is available!`;
-      domainAvailability.className = 'domain-hint available';
-      bindDomainBtn.disabled = false;
-    }
-  } catch (error) {
-    domainAvailability.textContent = 'Check failed';
-    domainAvailability.className = 'domain-hint';
-  } finally {
-    checkDomainBtn.disabled = false;
-    checkDomainBtn.textContent = 'Check';
-  }
-});
+const closeSuccessBtn = document.getElementById('closeSuccessBtn');
+const goToDomainsBtn = document.getElementById('goToDomainsBtn');
 
-bindDomainBtn?.addEventListener('click', async () => {
-  if (!currentPublishManifest) return;
-  
-  const domain = modalDomainInput?.value.trim();
-  if (!domain) return;
-  
-  if (!authState || !authState.ownerId) {
-    alert('Please authenticate first (Click "Continue as guest" in the welcome screen)');
-    hidePublishModal();
-    showAuthOverlay();
-    return;
-  }
-  
-  const fullDomain = `${domain}.dweb`;
-  
-  try {
-    bindDomainBtn.disabled = true;
-    
-    const reservePayload = {
-      domain: fullDomain,
-      owner: authState.ownerId,
-      manifestId: currentPublishManifest.manifestId
-    };
-    
-    await registryClient.registerDomain(reservePayload);
-    
-    currentPublishManifest.domain = fullDomain;
-    publishedApps.push(currentPublishManifest);
-    saveAppsToStorage(publishedApps);
-    renderAppsList();
-    
-    hidePublishModal();
-    
-    telemetry.emit('domain.bound', {
-      domain: fullDomain,
-      manifestId: currentPublishManifest.manifestId,
-      owner: authState?.ownerId || 'guest',
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    alert(`Binding failed: ${error.message || error}`);
-  } finally {
-    bindDomainBtn.disabled = false;
-  }
-});
-
-skipDomainBtn?.addEventListener('click', () => {
+closeSuccessBtn?.addEventListener('click', () => {
   if (currentPublishManifest) {
     publishedApps.push(currentPublishManifest);
     saveAppsToStorage(publishedApps);
@@ -944,50 +1108,82 @@ skipDomainBtn?.addEventListener('click', () => {
   hidePublishModal();
 });
 
-addDomainBtn?.addEventListener('click', async () => {
-  const domain = domainSearchInput?.value.trim();
-  if (!domain) {
+goToDomainsBtn?.addEventListener('click', () => {
+  if (currentPublishManifest) {
+    publishedApps.push(currentPublishManifest);
+    saveAppsToStorage(publishedApps);
+    renderAppsList();
+  }
+  hidePublishModal();
+  activateView('domains');
+});
+
+// Domain binding removed from publish flow - now done via Domains page
+
+registerNewDomainBtn?.addEventListener('click', async () => {
+  let domainName = domainSearchInput?.value.trim();
+  if (!domainName) {
     alert('Please enter a domain name');
     return;
   }
   
+  // Auto-add .dweb if not present
+  if (!domainName.endsWith('.dweb')) {
+    domainName = `${domainName}.dweb`;
+  }
+  
   if (!authState?.ownerId) {
-    alert('Please authenticate first');
+    alert('Please authenticate first (click "Continue as guest" in welcome screen)');
     return;
   }
   
   try {
-    addDomainBtn.disabled = true;
-    const existing = await registryClient.getDomain(domain);
+    registerNewDomainBtn.disabled = true;
     
+    // Check if domain exists
+    const existing = await registryClient.getDomain(domainName);
     if (existing) {
-      alert(`Domain ${domain} is already registered`);
-      addDomainBtn.disabled = false;
+      alert(`Domain ${domainName} is already registered`);
+      registerNewDomainBtn.disabled = false;
       return;
     }
     
-    if (!lastManifestRecord || !lastManifestRecord.manifestId) {
-      alert('No manifest available. Publish an app first.');
-      addDomainBtn.disabled = false;
-      return;
+    // Ask user to select a manifest to bind
+    let manifestId = null;
+    if (publishedApps.length > 0) {
+      const bindNow = confirm(`Domain ${domainName} is available!\n\nBind it to a published app now?`);
+      if (bindNow) {
+        const appChoices = publishedApps.map((app, idx) => 
+          `${idx + 1}. ${app.manifestId.slice(0, 16)}... (${app.fileName || 'Unknown'})`
+        ).join('\n');
+        const choice = prompt(`Select app (1-${publishedApps.length}):\n\n${appChoices}`, '1');
+        const index = parseInt(choice) - 1;
+        if (index >= 0 && index < publishedApps.length) {
+          manifestId = publishedApps[index].manifestId;
+        }
+      }
     }
     
+    // Sign domain registration
     const payload = {
-      domain,
+      domain: domainName,
       owner: authState.ownerId,
-      manifestId: lastManifestRecord.manifestId
+      manifestId: manifestId || 'unbound',
+      timestamp: Date.now()
     };
     
-    await registryClient.registerDomain(payload);
-    appendRegistryLog(`Domain ${domain} reserved`);
+    const signedPayload = await signDomainOperation(payload);
+    
+    await registryClient.registerDomain(signedPayload);
+    alert(`Domain ${domainName} registered successfully!${manifestId ? '\nBound to: ' + manifestId : ''}`);
     
     await refreshDomainsList();
     domainSearchInput.value = '';
     
   } catch (error) {
-    appendRegistryLog(`Failed to reserve domain: ${error.message ?? error}`);
+    alert(`Failed to register domain: ${error.message ?? error}`);
   } finally {
-    addDomainBtn.disabled = false;
+    registerNewDomainBtn.disabled = false;
   }
 });
 
@@ -1097,7 +1293,7 @@ if (!rawStorageServiceUrl) {
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
 telemetry = new TelemetryClient({ component: 'panel' });
 const PERSISTENCE_DEFAULTS = {
-  storeChunkData: false,
+  storeChunkData: true,  // Changed to true for reliability
   uploadChunksToStorage: false
 };
 let persistenceSettings = {
@@ -1467,6 +1663,57 @@ function setupReplicationAckListener() {
     });
   }
 }
+
+// Auto-connect on panel load
+async function attemptAutoConnect() {
+  if (connectionManager) return; // Already connected
+  
+  const url = signalingInput?.value?.trim() || DEFAULT_SIGNALING_URL;
+  if (!url || (!url.startsWith('ws://') && !url.startsWith('wss://'))) {
+    setSidebarStatus('unknown');
+    return;
+  }
+  
+  const authToken = signalingAuthTokenInput?.value?.trim() || storedSignalingAuthToken || '';
+  const requestedPeerId = peerIdInput?.value?.trim() || generatePeerId();
+  
+  try {
+    connectionManager = new WebRTCConnectionManager({
+      signalingUrl: url,
+      peerId: requestedPeerId,
+      authToken: authToken || null
+    });
+    
+    registerManagerEvents(connectionManager);
+    
+    await connectionManager.connect();
+    if (connectionManager.updateRelayMode) {
+      await connectionManager.updateRelayMode();
+    }
+    setSidebarStatus(connectionManager.getRelayMode?.() === 'relay' ? 'relay' : 'peer');
+    telemetry.setContext('signalingUrl', url);
+    telemetry.emit('connection.attempt', {
+      role: 'panel',
+      signalingUrl: url,
+      iceTransport: connectionManager.getIcePolicy?.() ?? 'all',
+      startTime: new Date().toISOString(),
+      endTime: new Date().toISOString(),
+      result: 'success',
+      relay: connectionManager.getRelayMode?.() === 'relay',
+      autoConnect: true
+    });
+    if (connectBtn) connectBtn.disabled = true;
+  } catch (error) {
+    setSidebarStatus('unknown');
+    connectionManager = null;
+    telemetry.emit('error.event', {
+      component: 'panel',
+      context: 'auto-connect',
+      message: error?.message ?? String(error)
+    });
+  }
+}
+
 setReplicationUpdateHandler((snapshot) => renderReplicationStatus(snapshot));
 let maxReplicaTargets = DEFAULT_MAX_REPLICA_TARGETS;
 let autoReplicaSelection = true;
@@ -1634,7 +1881,7 @@ connectBtn.addEventListener('click', async () => {
   }
 });
 
-openChannelBtn.addEventListener('click', async () => {
+openChannelBtn?.addEventListener('click', async () => {
   if (!connectionManager) {
     appendLog('Connect to signaling first.');
     return;
@@ -1654,9 +1901,9 @@ openChannelBtn.addEventListener('click', async () => {
   }
 });
 
-sendMessageBtn.addEventListener('click', () => {
+sendMessageBtn?.addEventListener('click', () => {
   if (!connectionManager) return;
-  const text = messageInput.value.trim();
+  const text = messageInput?.value.trim();
   if (!text) {
     appendLog('Type a message before sending.');
     return;
@@ -1670,13 +1917,13 @@ sendMessageBtn.addEventListener('click', () => {
       peerId: localPeerId
     });
     appendChannelLog(`You -> ${text}`);
-    messageInput.value = '';
+    if (messageInput) messageInput.value = '';
   } catch (error) {
     appendLog(`Failed to send message: ${error.message ?? error}`);
   }
 });
 
-sendFileBtn.addEventListener('click', async () => {
+sendFileBtn?.addEventListener('click', async () => {
   if (!connectionManager) {
     appendLog('Connect first before sending files.');
     return;
@@ -1729,7 +1976,7 @@ sendFileBtn.addEventListener('click', async () => {
   }
 });
 
-registerDomainBtn.addEventListener('click', async () => {
+registerDomainBtn?.addEventListener('click', async () => {
   if (!lastManifestRecord) {
     appendRegistryLog('No manifest registered yet.');
     return;
@@ -3642,9 +3889,9 @@ function uint8ToBase64(uint8Array) {
   }
   return btoa(binary);
 }
-async function registerManifestWithRegistry(manifest) {
+async function registerManifestWithRegistry(manifest, transferOverride = null) {
   try {
-    const transfer = chunkManager.getTransfer(manifest.transferId);
+    const transfer = transferOverride || chunkManager.getTransfer(manifest.transferId);
     const chunkData = [];
     const chunkReplicas = [];
     const chunkPointers = [];
@@ -3653,6 +3900,17 @@ async function registerManifestWithRegistry(manifest) {
     if (transfer) {
       for (let i = 0; i < transfer.totalChunks; i += 1) {
         const base64Chunk = transfer.getChunkBase64(i);
+        
+        // Debug: Check what getChunkBase64 actually returns
+        if (i === 0) {
+          console.log('[chunk debug]', {
+            index: i,
+            type: typeof base64Chunk,
+            isNull: base64Chunk === null,
+            isString: typeof base64Chunk === 'string',
+            sample: base64Chunk ? base64Chunk.slice(0, 20) : null
+          });
+        }
 
         if (storeInline && base64Chunk) {
           chunkData.push(base64Chunk);
@@ -3675,15 +3933,41 @@ async function registerManifestWithRegistry(manifest) {
         cacheChunk(manifest.transferId, i, base64Chunk);
         chunkReplicas.push([localPeerId]);
       }
+    } else {
+      // No transfer available - populate with nulls based on manifest.chunkCount
+      const chunkCount = manifest.chunkCount || 0;
+      for (let i = 0; i < chunkCount; i += 1) {
+        chunkData.push(null);
+        chunkReplicas.push([localPeerId]);
+        chunkPointers.push(null);
+      }
     }
 
-    const record = await registryClient.registerManifest({
+    // Validate chunkData: must be array of (null | string)
+    const validatedChunkData = chunkData.map((chunk, idx) => {
+      if (chunk === null || chunk === undefined) return null;
+      if (typeof chunk === 'string') return chunk;
+      console.warn(`[registerManifest] Invalid chunk at index ${idx}:`, typeof chunk, chunk);
+      return null; // Fallback to null for invalid types
+    });
+    
+    const payload = {
       ...manifest,
-      chunkData,
+      chunkData: validatedChunkData,
       chunkReplicas,
       chunkPointers,
       replicas: [localPeerId, ...(incomingTransfer?.manifest?.replicas ?? [])]
+    };
+    
+    console.log('[registerManifest] Payload:', {
+      transferId: payload.transferId,
+      chunkDataLength: payload.chunkData?.length,
+      chunkDataSample: payload.chunkData?.slice(0, 2),
+      chunkDataTypes: payload.chunkData?.map(c => c === null ? 'null' : typeof c),
+      invalidCount: payload.chunkData?.filter(c => c !== null && typeof c !== 'string').length
     });
+    
+    const record = await registryClient.registerManifest(payload);
     lastManifestRecord = record;
     telemetry.setContext(
       'manifestId',
@@ -3710,6 +3994,29 @@ async function registerManifestWithRegistry(manifest) {
     lastManifestRecord = null;
     refreshRegisterButtonState();
   }
+}
+
+async function signDomainOperation(payload) {
+  if (!authState?.ownerId) {
+    throw new Error('Not authenticated');
+  }
+  
+  // Load keypair
+  const keypair = await loadKeypair(authState.ownerId);
+  if (!keypair) {
+    throw new Error('Keypair not found. Please re-authenticate.');
+  }
+  
+  // Create signed message
+  const message = JSON.stringify(payload);
+  const signature = await signMessage(keypair.privateKey, message);
+  
+  return {
+    ...payload,
+    publicKey: authState.publicKey,
+    signature,
+    signedMessage: message
+  };
 }
 
 function generatePeerId() {
@@ -3761,6 +4068,21 @@ function refreshRegisterButtonState() {
     registerDomainBtn.title = '';
   }
 }
+
+// Attempt auto-connection when authenticated
+// Disabled: Background peer service handles connection
+// if (authState?.ownerId) {
+//   setTimeout(() => attemptAutoConnect(), 500);
+// }
+
+// Query background peer status instead
+chrome.runtime.sendMessage({ type: 'background-peer-status' }, (response) => {
+  if (chrome.runtime.lastError) return;
+  if (response?.connected) {
+    console.log('[Panel] Background peer is active:', response.peerId);
+    setSidebarStatus(response.relayMode ? 'relay' : 'peer');
+  }
+});
 
 
 

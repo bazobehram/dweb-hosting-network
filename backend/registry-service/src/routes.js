@@ -1,4 +1,5 @@
 import { emitTelemetry } from '../../common/telemetry.js';
+import { verifySignature, deriveOwnerIdFromPublicKey } from '../../common/crypto.js';
 
 const COMPONENT_NAME = 'registry';
 
@@ -218,12 +219,52 @@ export function registerRoutes(app, store, helpers = {}) {
     const payload = request.body;
     validateDomainPayload(payload);
 
+    // Verify cryptographic signature (if provided)
+    if (payload.signature && payload.publicKey && payload.signedMessage) {
+      const valid = await verifySignature(
+        payload.publicKey,
+        payload.signedMessage,
+        payload.signature
+      );
+      
+      if (!valid) {
+        return respondError(reply, {
+          statusCode: 401,
+          error: 'INVALID_SIGNATURE',
+          context: 'register-domain',
+          domain: payload.domain
+        });
+      }
+      
+      // Verify owner ID matches public key
+      const derivedOwner = deriveOwnerIdFromPublicKey(payload.publicKey);
+      if (derivedOwner !== payload.owner) {
+        return respondError(reply, {
+          statusCode: 401,
+          error: 'OWNER_MISMATCH',
+          context: 'register-domain',
+          domain: payload.domain
+        });
+      }
+      
+      console.log(`[Registry] Cryptographic signature verified for ${payload.domain} by ${payload.owner}`);
+    } else if (payload.owner && payload.owner.startsWith('dweb:0x')) {
+      // If owner ID is cryptographic format but no signature, reject
+      return respondError(reply, {
+        statusCode: 401,
+        error: 'SIGNATURE_REQUIRED',
+        context: 'register-domain',
+        domain: payload.domain
+      });
+    }
+
     try {
       const record = store.registerDomain(payload.domain, {
         owner: payload.owner,
         manifestId: payload.manifestId,
         replicas: payload.replicas ?? [],
-        metadata: payload.metadata ?? {}
+        metadata: payload.metadata ?? {},
+        publicKey: payload.publicKey ?? null
       });
       reply.code(201);
       return record;
@@ -353,6 +394,18 @@ function validateDomainPayload(payload) {
   }
   if (payload.replicas && !Array.isArray(payload.replicas)) {
     throw new Error('Replicas must be an array');
+  }
+  // If cryptographic owner ID, require signature fields
+  if (payload.owner.startsWith('dweb:0x')) {
+    if (!payload.signature || typeof payload.signature !== 'string') {
+      throw new Error('Signature is required for cryptographic owners');
+    }
+    if (!payload.publicKey || typeof payload.publicKey !== 'string') {
+      throw new Error('Public key is required for cryptographic owners');
+    }
+    if (!payload.signedMessage || typeof payload.signedMessage !== 'string') {
+      throw new Error('Signed message is required for cryptographic owners');
+    }
   }
 }
 

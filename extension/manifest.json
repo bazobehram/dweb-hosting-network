@@ -11,15 +11,18 @@
     "newtab": "resolver/index.html"
   },
   "background": {
-    "service_worker": "scripts/background.js"
+    "service_worker": "scripts/background.js",
+    "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*"
   },
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "webNavigation"
   ],
   "host_permissions": [
     "http://localhost/*",

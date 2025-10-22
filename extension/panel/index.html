@@ -50,22 +50,27 @@
         </div>
         
         <div id="publishStep3" class="publish-step-view">
-          <h2>Almost Done!</h2>
-          <p class="modal-subtitle">Bind your app to a .dweb domain</p>
+          <h2>✓ Published Successfully!</h2>
+          <p class="modal-subtitle">Your app is now replicated across the network</p>
           
-          <div class="domain-bind-form">
-            <label for="modalDomainInput">Domain name</label>
-            <div class="domain-input-group">
-              <input id="modalDomainInput" type="text" placeholder="myapp" />
-              <span class="domain-suffix">.dweb</span>
-              <button id="checkDomainBtn" class="secondary small">Check</button>
-            </div>
-            <p id="domainAvailability" class="domain-hint"></p>
+          <div class="success-summary">
+            <p><strong>Manifest ID:</strong> <code id="publishedManifestId">—</code></p>
+            <p><strong>Chunks:</strong> <span id="publishedChunks">—</span></p>
+            <p><strong>Replicated to:</strong> <span id="publishedPeers">—</span> peers</p>
+          </div>
+          
+          <div class="next-steps">
+            <h3>Next Steps:</h3>
+            <ul>
+              <li>Go to <strong>Domains</strong> tab to register a .dweb domain</li>
+              <li>Then bind your domain to this manifest</li>
+              <li>Finally, open your domain in the browser!</li>
+            </ul>
           </div>
           
           <div class="modal-actions">
-            <button id="skipDomainBtn" class="secondary">Skip for Now</button>
-            <button id="bindDomainBtn" class="primary" disabled>Bind & Finish</button>
+            <button id="closeSuccessBtn" class="primary">Done</button>
+            <button id="goToDomainsBtn" class="secondary">Manage Domains →</button>
           </div>
         </div>
       </div>
@@ -96,10 +101,8 @@
 
         <nav class="sidebar-nav">
           <button class="nav-item active" data-view="dashboard">Dashboard</button>
-          <button class="nav-item" data-view="publish">Publish</button>
+          <button class="nav-item" data-view="hosting">Hosting</button>
           <button class="nav-item" data-view="domains">Domains</button>
-          <button class="nav-item" data-view="peers">Peers</button>
-          <button class="nav-item" data-view="activity">Activity</button>
           <button class="nav-item" data-view="settings">Settings</button>
         </nav>
 
@@ -131,7 +134,77 @@
         </header>
 
         <section id="view-dashboard" class="view active">
-          <div class="dashboard-hero">
+          <h2 class="view-title">Network Overview</h2>
+          
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">📚</div>
+              <div class="stat-content">
+                <div class="stat-label">Published Apps</div>
+                <div class="stat-value" id="dashboardAppsCount">0</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon">🌐</div>
+              <div class="stat-content">
+                <div class="stat-label">Registered Domains</div>
+                <div class="stat-value" id="dashboardDomainsCount">0</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon">👥</div>
+              <div class="stat-content">
+                <div class="stat-label">Connected Peers</div>
+                <div class="stat-value" id="dashboardPeersCount">0</div>
+              </div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-icon">⚡</div>
+              <div class="stat-content">
+                <div class="stat-label">Network Status</div>
+                <div class="stat-value" id="dashboardNetworkStatus">Unknown</div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card">
+            <header>
+              <h3>Recent Activity</h3>
+            </header>
+            <div id="dashboardActivity" class="activity-feed">
+              <p class="empty-hint">No recent activity</p>
+            </div>
+          </div>
+          
+          <div class="card">
+            <header>
+              <h3>Quick Actions</h3>
+            </header>
+            <div class="quick-actions">
+              <button class="action-btn" data-goto="hosting">
+                <span class="action-icon">📤</span>
+                <span class="action-text">Publish Application</span>
+              </button>
+              <button class="action-btn" data-goto="domains">
+                <span class="action-icon">🌐</span>
+                <span class="action-text">Register Domain</span>
+              </button>
+              <button class="action-btn" id="openResolverDashboard">
+                <span class="action-icon">🔍</span>
+                <span class="action-text">Open Resolver</span>
+              </button>
+            </div>
+          </div>
+
+        </section>
+        
+        <section id="view-hosting" class="view">
+          <h2 class="view-title">Hosting</h2>
+          
+          <div class="hosting-hero">
             <button id="publishNewAppBtn" class="publish-hero-btn">
               <span class="hero-icon">📤</span>
               <span class="hero-text">Publish New Application</span>
@@ -140,24 +213,24 @@
 
           <div class="card">
             <header>
-              <h3>Your Applications</h3>
+              <h3>Your Published Applications</h3>
             </header>
             <div id="appsList" class="apps-list">
               <div class="empty-state">
                 <p class="empty-icon">📦</p>
-                <p class="empty-text">No apps yet</p>
+                <p class="empty-text">No apps published yet</p>
                 <p class="empty-hint">Click "Publish New Application" to get started!</p>
               </div>
             </div>
           </div>
-
+          
           <details class="developer-section">
-            <summary>Developer Tools</summary>
+            <summary>Developer Tools & Debugging</summary>
             <div class="dev-tools-content">
               <div class="card">
                 <header>
                   <h3>Connection Status</h3>
-                  <button id="connectBtn" class="primary small">Connect</button>
+                  <button id="connectBtn" class="primary small">Reconnect</button>
                 </header>
                 <div class="form-grid">
                   <label for="signalingUrl">Signaling Server URL</label>
@@ -180,11 +253,34 @@
                 </div>
                 <div id="statusLog" class="log"></div>
               </div>
+              
+              <div class="card">
+                <header>
+                  <h3>Active Peers (Debug)</h3>
+                  <button id="refreshPeersBtn" class="secondary-button small">Refresh</button>
+                </header>
+                <table class="data-table peers-table">
+                  <thead>
+                    <tr>
+                      <th>Peer ID</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="peerTableBody"></tbody>
+                </table>
+              </div>
+              
+              <div class="card">
+                <header>
+                  <h3>Telemetry & Metrics</h3>
+                </header>
+                <div id="selectionLogContainer" class="log large"></div>
+              </div>
             </div>
           </details>
         </section>
 
-        <section id="view-publish" class="view">
+        <section id="view-publish" class="view" style="display:none;">
           <div class="card">
             <header>
               <h3>Publish & Replicate</h3>
@@ -305,8 +401,8 @@
               <button id="refreshDomainsBtn" class="secondary-button small">Refresh</button>
             </header>
             <div class="domain-toolbar">
-              <input id="domainSearchInput" type="text" placeholder="Search domains…" />
-              <button id="addDomainBtn" class="primary">Reserve Domain</button>
+              <input id="domainSearchInput" type="text" placeholder="Register .dweb domain" />
+              <button id="registerNewDomainBtn" class="primary">Register Domain</button>
             </div>
             <table class="data-table" id="domainTable">
               <thead>
@@ -323,7 +419,7 @@
           </div>
         </section>
 
-        <section id="view-peers" class="view">
+        <section id="view-peers" class="view" style="display:none;">
           <div class="card">
             <header>
               <h3>Active Peers</h3>
@@ -358,7 +454,7 @@
           </div>
         </section>
 
-        <section id="view-activity" class="view">
+        <section id="view-activity" class="view" style="display:none;">
           <div class="card">
             <header>
               <h3>Selection Log</h3>
@@ -381,48 +477,75 @@
         <section id="view-settings" class="view">
           <div class="card">
             <header>
-              <h3>Feature Toggles</h3>
-            </header>
-            <div class="toggle-grid">
-              <label class="toggle">
-                <input type="checkbox" id="togglePeerFirst" checked />
-                <span>Peer-first mode</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="toggleHealthScoring" checked />
-                <span>Health scoring</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="toggleE2EAuto" checked />
-                <span>Auto E2E runs</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="toggleRegistryFallback" />
-                <span>Registry fallback</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="card developer-only">
-            <header>
-              <h3>Developer Settings</h3>
+              <h3>Network Settings</h3>
             </header>
             <div class="form-grid">
-              <label for="registryUrl">Registry URL</label>
-              <input id="registryUrl" type="text" value="http://34.107.74.70:8788" />
+              <label for="registryUrl">Registry Server</label>
+              <input id="registryUrl" type="text" value="http://34.107.74.70:8788" readonly />
 
-              <label for="registryApiKey">Registry API Key</label>
+              <label for="registryApiKey">API Key (optional)</label>
               <input
                 id="registryApiKey"
                 type="password"
-                placeholder="Leave blank if registry is public"
+                placeholder="Leave blank for public access"
                 value="registry-test-key"
               />
             </div>
-            <p class="hint">
-              Developer settings are hidden in user mode. Toggle developer mode to edit registry/storage/signaling endpoints.
-            </p>
           </div>
+          
+          <div class="card">
+            <header>
+              <h3>Account</h3>
+            </header>
+            <div class="account-info">
+              <p><strong>Owner ID:</strong> <code id="settingsOwnerId">—</code></p>
+              <p class="hint">This is your unique identifier for domain ownership.</p>
+            </div>
+          </div>
+          
+          <div class="card">
+            <header>
+              <h3>Background Peer Service</h3>
+            </header>
+            <label class="toggle">
+              <input type="checkbox" id="toggleBackgroundPeer" checked />
+              <span>Run as peer in background (recommended)</span>
+            </label>
+            <p class="hint">When enabled, you automatically participate in the P2P network even when the panel is closed. Your browser will store and serve chunks to other users, contributing to network resilience.</p>
+            <div id="backgroundPeerStatus" class="status-info">
+              <p><strong>Status:</strong> <span id="bgPeerStatusText">Initializing...</span></p>
+              <p><strong>Peer ID:</strong> <code id="bgPeerIdText">—</code></p>
+            </div>
+          </div>
+          
+          <details class="developer-section">
+            <summary>Advanced Options</summary>
+            <div class="dev-tools-content">
+              <div class="card">
+                <header>
+                  <h3>Feature Flags</h3>
+                </header>
+                <div class="toggle-grid">
+                  <label class="toggle">
+                    <input type="checkbox" id="togglePeerFirst" checked />
+                    <span>Peer-first mode</span>
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" id="toggleHealthScoring" checked />
+                    <span>Health scoring</span>
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" id="toggleE2EAuto" checked />
+                    <span>Auto E2E tests</span>
+                  </label>
+                  <label class="toggle">
+                    <input type="checkbox" id="toggleRegistryFallback" />
+                    <span>Registry fallback</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
       </div>
     </div>

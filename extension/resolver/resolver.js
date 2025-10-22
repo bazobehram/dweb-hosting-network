@@ -18,7 +18,7 @@ const statusFallbackEl = document.getElementById("statusFallback");
 const REGISTRY_API_KEY_STORAGE_KEY = "dweb-registry-api-key";
 const STORAGE_API_KEY_STORAGE_KEY = "dweb-storage-api-key";
 const STORAGE_SERVICE_URL_STORAGE_KEY = "dweb-storage-service-url";
-const DEFAULT_STORAGE_SERVICE_URL = "http://localhost:8789";
+const DEFAULT_STORAGE_SERVICE_URL = "http://34.107.74.70:8789";
 const SOURCE_LABELS = {
   peer: "Peer",
   pointer: "Storage pointer",
@@ -69,16 +69,37 @@ if (storageApiKeyInput) {
   });
 }
 
+// Unregister existing service worker (CSP conflict with 34.107.74.70)
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker
-    .register("./serviceWorker.js")
-    .then(() => appendLog("Service worker registered"))
-    .catch((error) =>
-      appendLog(`Service worker registration failed: ${error.message}`)
-    );
+  (async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(
+        regs.map((r) =>
+          r
+            .unregister()
+            .then((ok) => {
+              if (ok) appendLog("Service worker unregistered (CSP fix)");
+            })
+            .catch(() => {})
+        )
+      );
+    } catch {
+      // ignore AbortError or cross-origin cases
+    }
+  })();
 }
 
 resetResolveStats();
+
+// Auto-resolve if domain param exists in URL
+const urlParams = new URLSearchParams(window.location.search);
+const domainParam = urlParams.get('domain');
+if (domainParam) {
+  domainInput.value = domainParam;
+  appendLog(`Auto-resolving ${domainParam}...`);
+  setTimeout(() => resolveBtn.click(), 500);
+}
 
 registryUrlInput.addEventListener("change", () => {
   registryClient = new RegistryClient(registryUrlInput.value.trim(), {
