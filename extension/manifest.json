@@ -22,7 +22,8 @@
     "storage",
     "activeTab",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "offscreen"
   ],
   "host_permissions": [
     "http://localhost/*",
