@@ -28,6 +28,22 @@ chrome.runtime.onStartup.addListener(() => {
   setupOffscreenDocument();
 });
 
+// Auto-start on service worker activation (handles browser restarts, incognito, etc.)
+self.addEventListener('activate', (event) => {
+  console.log('[DWeb] Service worker activated');
+  event.waitUntil(
+    setupOffscreenDocument().catch(err => console.error('[DWeb] Auto-start failed:', err))
+  );
+});
+
+// Ensure offscreen document starts even if no events fired
+setTimeout(() => {
+  if (!offscreenDocumentReady) {
+    console.log('[DWeb] Starting offscreen document via timeout fallback');
+    setupOffscreenDocument();
+  }
+}, 1000);
+
 // Intercept .dweb navigation and redirect to resolver
 chrome.webNavigation.onBeforeNavigate.addListener(
   (details) => {

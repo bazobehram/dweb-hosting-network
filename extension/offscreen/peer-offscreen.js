@@ -100,10 +100,13 @@ function stopBackgroundPeer() {
 
 function setupMainConnectionHandlers() {
   connectionManager.addEventListener('registered', (event) => {
-    console.log('[Offscreen] Registered as peer:', event.detail.peerId);
+    console.log('[Offscreen] ✅ Registered as peer:', event.detail.peerId);
+    console.log('[Offscreen] Registration event:', event.detail);
+    
     if (event.detail.peers && Array.isArray(event.detail.peers)) {
       discoveredPeers = event.detail.peers.filter(p => p.peerId !== localPeerId);
-      console.log('[Offscreen] Discovered peers:', discoveredPeers.length);
+      console.log(`[Offscreen] 🔍 Discovered ${discoveredPeers.length} peer(s):`, 
+        discoveredPeers.map(p => p.peerId || p));
       
       // Simple strategy: If we're the "newest" peer (higher ID), we initiate
       // This ensures at least one browser initiates connections
@@ -111,11 +114,15 @@ function setupMainConnectionHandlers() {
                             discoveredPeers.every(p => p.peerId < localPeerId);
       
       if (shouldInitiate && discoveredPeers.length > 0) {
-        console.log('[Offscreen] Active mode: initiating connection to newest peer');
+        console.log('[Offscreen] 🚀 Active mode: initiating connections (we have highest ID)');
         setTimeout(() => connectToLatestPeer(), 1000);
+      } else if (discoveredPeers.length === 0) {
+        console.log('[Offscreen] 👤 First peer in network - waiting for others');
       } else {
-        console.log('[Offscreen] Passive mode: waiting for incoming connections');
+        console.log('[Offscreen] 💤 Passive mode: waiting for incoming connections (we have lower ID)');
       }
+    } else {
+      console.warn('[Offscreen] ⚠️ No peers array in registration event');
     }
   });
   
@@ -123,22 +130,28 @@ function setupMainConnectionHandlers() {
     const message = event.detail;
     if (message.type === 'peer-list') {
       discoveredPeers = (message.peers || []).filter(p => p.peerId !== localPeerId);
-      console.log('[Offscreen] Peer list updated:', discoveredPeers.length);
+      console.log(`[Offscreen] 📋 Peer list updated: ${discoveredPeers.length} peer(s)`, 
+        discoveredPeers.map(p => p.peerId || p));
     } else if (message.type === 'peer-joined') {
       const newPeerId = message.peerId;
       if (!discoveredPeers.find(p => p.peerId === newPeerId)) {
         discoveredPeers.push({ peerId: newPeerId });
-        console.log('[Offscreen] Peer joined:', newPeerId);
+        console.log(`[Offscreen] ➕ Peer joined: ${newPeerId}`);
+        console.log(`[Offscreen] Total known peers: ${discoveredPeers.length}`);
         
         // If new peer has lower ID than us, we initiate connection
         if (newPeerId < localPeerId) {
-          console.log('[Offscreen] Initiating connection to new peer (we have higher ID)');
+          console.log('[Offscreen] 🚀 Will connect (we have higher ID)');
           setTimeout(() => connectToLatestPeer(), 500);
+        } else {
+          console.log('[Offscreen] 💤 Waiting for them to connect (they have higher ID)');
         }
       }
     } else if (message.type === 'peer-left') {
-      discoveredPeers = discoveredPeers.filter(p => p.peerId !== message.peerId);
-      console.log('[Offscreen] Peer left:', message.peerId);
+      const leftPeerId = message.peerId;
+      discoveredPeers = discoveredPeers.filter(p => p.peerId !== leftPeerId);
+      console.log(`[Offscreen] ➖ Peer left: ${leftPeerId}`);
+      console.log(`[Offscreen] Remaining peers: ${discoveredPeers.length}`);
     }
   });
   
