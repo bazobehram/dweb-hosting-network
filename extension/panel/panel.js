@@ -336,28 +336,45 @@ async function refreshDomainsList() {
     const list = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
     
     if (list.length === 0) {
-      domainsTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8c93ab;">No domains registered</td></tr>';
+      domainsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8c93ab;">No domains registered</td></tr>';
       return;
     }
     
-    list.forEach((domain) => {
+    list.forEach(async (domain) => {
       const row = domainsTableBody.insertRow();
       const isBound = Boolean(domain.manifestId);
       const statusClass = isBound ? 'status-bound' : 'status-unbound';
       const statusText = isBound ? 'Bound' : 'Reserved';
       const updatedDate = domain.updatedAt ? new Date(domain.updatedAt).toLocaleString() : '—';
       const manifestIdShort = domain.manifestId ? domain.manifestId.slice(0, 12) + '...' : '—';
+      const replicaCount = domain.replicas?.length || 0;
+      
+      // Health status cell
+      const healthCell = `<td><span class="health-status checking" data-domain="${escapeHtml(domain.domain)}">⏳</span></td>`;
       
       row.innerHTML = `
         <td><strong>${escapeHtml(domain.domain ?? '—')}</strong></td>
+        ${healthCell}
         <td><span class="status-badge ${statusClass}">${statusText}</span></td>
         <td title="${escapeHtml(domain.manifestId ?? '')}">${escapeHtml(manifestIdShort)}</td>
-        <td>${updatedDate}</td>
+        <td>${replicaCount} peer${replicaCount !== 1 ? 's' : ''}</td>
         <td>
+          ${isBound ? `<button class="secondary small" data-action="test" data-domain="${escapeHtml(domain.domain ?? '')}">Test</button>` : ''}
           <button class="secondary small" data-action="edit" data-domain="${escapeHtml(domain.domain ?? '')}">Edit</button>
           ${isBound ? `<button class="secondary small" data-action="open" data-domain="${escapeHtml(domain.domain ?? '')}">Open</button>` : ''}
         </td>
       `;
+      
+      // Start health check if bound
+      if (isBound) {
+        checkDomainHealth(domain.domain, domain.manifestId);
+      } else {
+        const healthStatus = row.querySelector('.health-status');
+        if (healthStatus) {
+          healthStatus.textContent = '—';
+          healthStatus.classList.remove('checking');
+        }
+      }
       
       // Attach event listeners
       const buttons = row.querySelectorAll('button[data-action]');
@@ -369,6 +386,8 @@ async function refreshDomainsList() {
             window.editDomain(domainName);
           } else if (action === 'open') {
             window.openAppDomain(domainName);
+          } else if (action === 'test') {
+            testDomain(domainName);
           }
         });
       });
@@ -397,6 +416,88 @@ async function refreshPeersTable() {
       <td>—</td>
     `;
   });
+}
+
+async function checkDomainHealth(domain, manifestId) {
+  if (!manifestId) return;
+  
+  const healthStatusEl = document.querySelector(`.health-status[data-domain="${domain}"]`);
+  if (!healthStatusEl) return;
+  
+  try {
+    // Check if manifest exists in registry
+    const manifestResponse = await registryClient.getManifest(manifestId);
+    
+    if (manifestResponse && manifestResponse.chunks && manifestResponse.chunks.length > 0) {
+      // Manifest exists and has chunks
+      healthStatusEl.textContent = '✅'; // ✅
+      healthStatusEl.classList.remove('checking');
+      healthStatusEl.classList.add('healthy');
+      healthStatusEl.title = 'Domain is healthy and accessible';
+    } else {
+      // Manifest exists but no chunks
+      healthStatusEl.textContent = '⚠️'; // ⚠️
+      healthStatusEl.classList.remove('checking');
+      healthStatusEl.classList.add('warning');
+      healthStatusEl.title = 'Manifest found but no data available';
+    }
+  } catch (error) {
+    // Manifest not found or error
+    healthStatusEl.textContent = '❌'; // ❌
+    healthStatusEl.classList.remove('checking');
+    healthStatusEl.classList.add('error');
+    healthStatusEl.title = `Error: ${error.message || 'Manifest not found'}`;
+  }
+}
+
+async function testDomain(domainName) {
+  if (!domainName) return;
+  
+  const testBtn = document.querySelector(`button[data-action="test"][data-domain="${domainName}"]`);
+  if (testBtn) {
+    testBtn.disabled = true;
+    testBtn.textContent = 'Testing...';
+  }
+  
+  try {
+    // Get domain info
+    const domain = await registryClient.getDomain(domainName);
+    if (!domain || !domain.manifestId) {
+      alert(`Domain ${domainName} is not bound to any manifest`);
+      return;
+    }
+    
+    // Check manifest
+    const manifest = await registryClient.getManifest(domain.manifestId);
+    if (!manifest) {
+      alert(`❌ Manifest ${domain.manifestId} not found!\n\nThe domain is bound but the app data is missing.\n\nPlease republish your app with "Inline Registry Data" enabled.`);
+      return;
+    }
+    
+    if (!manifest.chunks || manifest.chunks.length === 0) {
+      alert(`⚠️ Manifest exists but has no chunks!\n\nThe app data is not stored.\n\nPlease republish with "Inline Registry Data" enabled.`);
+      return;
+    }
+    
+    // Check first chunk
+    try {
+      const firstChunk = manifest.chunks[0];
+      if (firstChunk && firstChunk.data) {
+        alert(`✅ Domain is healthy!\n\nDomain: ${domainName}\nManifest: ${domain.manifestId}\nChunks: ${manifest.chunks.length}\n\nYou can open it in the browser.`);
+      } else {
+        alert(`⚠️ Chunks exist but data is missing!\n\nPlease republish the app.`);
+      }
+    } catch (e) {
+      alert(`⚠️ Could not verify chunk data: ${e.message}`);
+    }
+  } catch (error) {
+    alert(`❌ Test failed: ${error.message}`);
+  } finally {
+    if (testBtn) {
+      testBtn.disabled = false;
+      testBtn.textContent = 'Test';
+    }
+  }
 }
 
 function escapeHtml(unsafe) {
