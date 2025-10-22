@@ -104,9 +104,18 @@ function setupMainConnectionHandlers() {
     if (event.detail.peers && Array.isArray(event.detail.peers)) {
       discoveredPeers = event.detail.peers.filter(p => p.peerId !== localPeerId);
       console.log('[Offscreen] Discovered peers:', discoveredPeers.length);
-      console.log('[Offscreen] Waiting for incoming connections (passive mode)');
-      // Don't initiate connections - wait for others to connect to us
-      // This simplifies the architecture and avoids the multi-peer connection issue
+      
+      // Simple strategy: If we're the "newest" peer (higher ID), we initiate
+      // This ensures at least one browser initiates connections
+      const shouldInitiate = discoveredPeers.length === 0 || 
+                            discoveredPeers.every(p => p.peerId < localPeerId);
+      
+      if (shouldInitiate && discoveredPeers.length > 0) {
+        console.log('[Offscreen] Active mode: initiating connection to newest peer');
+        setTimeout(() => connectToLatestPeer(), 1000);
+      } else {
+        console.log('[Offscreen] Passive mode: waiting for incoming connections');
+      }
     }
   });
   
@@ -116,9 +125,16 @@ function setupMainConnectionHandlers() {
       discoveredPeers = (message.peers || []).filter(p => p.peerId !== localPeerId);
       console.log('[Offscreen] Peer list updated:', discoveredPeers.length);
     } else if (message.type === 'peer-joined') {
-      if (!discoveredPeers.find(p => p.peerId === message.peerId)) {
-        discoveredPeers.push({ peerId: message.peerId });
-        console.log('[Offscreen] Peer joined:', message.peerId, '(waiting for their connection)');
+      const newPeerId = message.peerId;
+      if (!discoveredPeers.find(p => p.peerId === newPeerId)) {
+        discoveredPeers.push({ peerId: newPeerId });
+        console.log('[Offscreen] Peer joined:', newPeerId);
+        
+        // If new peer has lower ID than us, we initiate connection
+        if (newPeerId < localPeerId) {
+          console.log('[Offscreen] Initiating connection to new peer (we have higher ID)');
+          setTimeout(() => connectToLatestPeer(), 500);
+        }
       }
     } else if (message.type === 'peer-left') {
       discoveredPeers = discoveredPeers.filter(p => p.peerId !== message.peerId);
@@ -162,8 +178,38 @@ function setupMainConnectionHandlers() {
   });
 }
 
-// Passive mode: We only accept incoming connections from other peers
-// This simplifies the architecture - no need to manage multiple connection managers
+// Hybrid mode: Accept incoming connections + initiate to one peer if needed
+// Strategy: Higher peer ID initiates connection to establish P2P mesh
+
+async function connectToLatestPeer() {
+  if (!connectionManager || !connectionManager.signalingClient) {
+    console.log('[Offscreen] Cannot connect - signaling not ready');
+    return;
+  }
+  
+  if (discoveredPeers.length === 0) {
+    console.log('[Offscreen] No peers to connect to');
+    return;
+  }
+  
+  // Already have active connections?
+  if (connectionManager.targetPeerId && connectionManager.isChannelReady?.()) {
+    console.log('[Offscreen] Already connected to a peer');
+    return;
+  }
+  
+  // Get the first discovered peer
+  const targetPeer = discoveredPeers[0];
+  if (!targetPeer) return;
+  
+  try {
+    console.log(`[Offscreen] Connecting to peer: ${targetPeer.peerId}`);
+    await connectionManager.initiateConnection(targetPeer.peerId);
+    console.log(`[Offscreen] Connection initiated successfully`);
+  } catch (error) {
+    console.error(`[Offscreen] Failed to connect:`, error);
+  }
+}
 
 async function handlePeerMessage(message, manager, fromPeerId) {
   switch (message.type) {
