@@ -81,6 +81,12 @@ const REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY = 'dweb-registry-fallback-toggle';
 let telemetry = null;
 let registryClient = null;
 let chunkManager = null;
+let connectionManager = null;
+let localPeerId = null;
+let peers = [];
+let outgoingTransfer = null;
+let incomingTransfer = null;
+let lastManifestRecord = null;
 
 // Early initialization for apps list
 function loadAppsFromStorage() {
@@ -1638,12 +1644,6 @@ function shouldAttachStorageHeaders(targetUrl) {
   }
 }
 
-let connectionManager = null;
-let localPeerId = null;
-let peers = [];
-let outgoingTransfer = null;
-let incomingTransfer = null;
-let lastManifestRecord = null;
 const pendingPeerRequests = new Map();
 const replicationManager = createReplicationManager();
 
