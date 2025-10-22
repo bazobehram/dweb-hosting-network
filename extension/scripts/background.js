@@ -8,6 +8,7 @@ const REQUEST_TIMEOUT = 2000;
 // Background peer service state
 let backgroundPeerEnabled = false;
 let offscreenDocumentReady = false;
+let offscreenCreationInProgress = false;
 let localPeerId = null;
 let peerCount = 0;
 
@@ -193,6 +194,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ============================================
 
 async function setupOffscreenDocument() {
+  // Prevent multiple simultaneous creation attempts
+  if (offscreenDocumentReady) {
+    console.log('[SW] Offscreen document already ready');
+    return;
+  }
+  
+  if (offscreenCreationInProgress) {
+    console.log('[SW] Offscreen document creation already in progress');
+    return;
+  }
+  
+  offscreenCreationInProgress = true;
+  
   try {
     const settings = await chrome.storage.local.get([
       'dweb-background-peer-enabled',
@@ -204,10 +218,11 @@ async function setupOffscreenDocument() {
 
     if (!backgroundPeerEnabled) {
       console.log('[SW] Background peer service disabled in settings');
+      offscreenCreationInProgress = false;
       return;
     }
 
-    // Check if offscreen document exists
+    // Double-check if offscreen document exists
     const existingContexts = await chrome.runtime.getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],
       documentUrls: [chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH)]
@@ -216,6 +231,7 @@ async function setupOffscreenDocument() {
     if (existingContexts.length > 0) {
       console.log('[SW] Offscreen document already exists');
       offscreenDocumentReady = true;
+      offscreenCreationInProgress = false;
       return;
     }
 
@@ -244,6 +260,8 @@ async function setupOffscreenDocument() {
   } catch (error) {
     console.error('[SW] Failed to setup offscreen document:', error);
     offscreenDocumentReady = false;
+  } finally {
+    offscreenCreationInProgress = false;
   }
 }
 
