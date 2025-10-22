@@ -381,8 +381,8 @@
               </div>
             </header>
             <div class="form-grid">
-              <label for="domainInput">Domain</label>
-              <input id="domainInput" type="text" placeholder="example.dweb" />
+              <label for="domainInput">Domain (.dweb only)</label>
+              <input id="domainInput" type="text" placeholder="example.dweb" pattern=".*\.dweb$" title="Domain must end with .dweb" />
 
               <label for="ownerInput">Owner ID</label>
               <input id="ownerInput" type="text" placeholder="user-123" />
@@ -401,7 +401,12 @@
               <button id="refreshDomainsBtn" class="secondary-button small">Refresh</button>
             </header>
             <div class="domain-toolbar">
-              <input id="domainSearchInput" type="text" placeholder="Register .dweb domain" />
+              <div class="domain-input-group">
+                <input id="domainSearchInput" type="text" placeholder="example" style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" />
+                <select style="border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; background: var(--bg-secondary); color: var(--text); padding: 0.5rem; min-width: 100px;" disabled>
+                  <option>.dweb</option>
+                </select>
+              </div>
               <button id="registerNewDomainBtn" class="primary">Register Domain</button>
             </div>
             <table class="data-table" id="domainTable">

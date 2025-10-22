@@ -492,6 +492,12 @@ select:focus {
   margin-bottom: 16px;
 }
 
+.domain-input-group {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;

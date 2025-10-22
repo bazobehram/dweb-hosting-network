@@ -251,8 +251,12 @@ async function refreshDashboardOverview() {
   if (domainsCountEl) {
     try {
       const result = await registryClient.listDomains();
-      const list = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
-      domainsCountEl.textContent = list.length;
+      const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+      // Filter to only show current user's domains
+      const myDomains = authState?.ownerId 
+        ? allDomains.filter(d => d.owner === authState.ownerId)
+        : allDomains;
+      domainsCountEl.textContent = myDomains.length;
     } catch {
       domainsCountEl.textContent = '0';
     }
@@ -328,12 +332,22 @@ async function refreshDomainsList() {
     const result = await registryClient.listDomains();
     domainsTableBody.innerHTML = '';
     
-    const list = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+    const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
     
-    if (list.length === 0) {
-      domainsTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8c93ab;">No domains registered</td></tr>';
+    // Filter to only show current user's domains
+    const myDomains = authState?.ownerId 
+      ? allDomains.filter(d => d.owner === authState.ownerId)
+      : [];
+    
+    if (myDomains.length === 0) {
+      const message = authState?.ownerId 
+        ? 'No domains registered yet. Register your first .dweb domain!'
+        : 'Sign in to manage your domains';
+      domainsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#8c93ab;">${message}</td></tr>`;
       return;
     }
+    
+    const list = myDomains;
     
     list.forEach((domain) => {
       const row = domainsTableBody.insertRow();
@@ -428,19 +442,40 @@ window.editDomain = async function(domainName) {
       return;
     }
     
-    let action = 'Select action:\n\n';
-    action += '1. Rebind to different manifest\n';
-    action += '2. Update domain metadata\n';
+    const isBound = Boolean(domain.manifestId && domain.manifestId !== 'unbound');
+    
+    let action = isBound ? 'Domain is bound. Select action:\n\n' : 'Domain is unbound. Select action:\n\n';
+    action += '1. ' + (isBound ? 'Rebind to different app' : 'Bind to published app') + '\n';
+    action += '2. Unbind (make reserved)\n';
     action += '3. Transfer ownership\n';
     action += '4. Delete domain\n';
     
     const choice = prompt(action, '1');
     
     if (choice === '1') {
-      const newManifestId = prompt('Enter new manifest ID:', domain.manifestId || '');
-      if (newManifestId && newManifestId.trim()) {
-        await registryClient.updateDomainBinding(domainName, { manifestId: newManifestId.trim() });
-        alert(`Domain ${domainName} rebound to ${newManifestId}`);
+      // Show list of published apps
+      if (publishedApps.length === 0) {
+        alert('No published apps available.\n\nGo to Hosting tab and publish an app first!');
+        return;
+      }
+      
+      const appChoices = publishedApps.map((app, idx) => 
+        `${idx + 1}. ${app.manifestId.slice(0, 16)}... (${app.fileName || 'Unknown'}, ${app.chunks || 0} chunks)`
+      ).join('\n');
+      
+      const appChoice = prompt(`Select app to bind (1-${publishedApps.length}):\n\n${appChoices}`, '1');
+      const index = parseInt(appChoice) - 1;
+      
+      if (index >= 0 && index < publishedApps.length) {
+        const manifestId = publishedApps[index].manifestId;
+        await registryClient.updateDomainBinding(domainName, { manifestId });
+        alert(`✅ Domain ${domainName} bound to:\n${manifestId}`);
+        await refreshDomainsList();
+      }
+    } else if (choice === '2') {
+      if (confirm(`Unbind domain ${domainName}? It will become reserved (unbound).`)) {
+        await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
+        alert(`Domain ${domainName} is now unbound`);
         await refreshDomainsList();
       }
     } else if (choice === '3') {
@@ -1134,10 +1169,17 @@ registerNewDomainBtn?.addEventListener('click', async () => {
     return;
   }
   
-  // Auto-add .dweb if not present
-  if (!domainName.endsWith('.dweb')) {
-    domainName = `${domainName}.dweb`;
+  // Remove .dweb if user typed it (we'll add it)
+  domainName = domainName.replace(/\.dweb$/i, '');
+  
+  // Validate domain name (alphanumeric and hyphens only)
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/i.test(domainName) && !/^[a-z0-9]$/i.test(domainName)) {
+    alert('Domain name can only contain letters, numbers, and hyphens\n(must start and end with letter or number)');
+    return;
   }
+  
+  // Add .dweb extension
+  domainName = `${domainName}.dweb`;
   
   if (!authState?.ownerId) {
     alert('Please authenticate first (click "Continue as guest" in welcome screen)');
@@ -1155,10 +1197,10 @@ registerNewDomainBtn?.addEventListener('click', async () => {
       return;
     }
     
-    // Ask user to select a manifest to bind
+    // Ask user to select a manifest to bind (optional)
     let manifestId = null;
     if (publishedApps.length > 0) {
-      const bindNow = confirm(`Domain ${domainName} is available!\n\nBind it to a published app now?`);
+      const bindNow = confirm(`Domain ${domainName} is available!\n\nBind it to a published app now?\n(You can skip and bind later)`);
       if (bindNow) {
         const appChoices = publishedApps.map((app, idx) => 
           `${idx + 1}. ${app.manifestId.slice(0, 16)}... (${app.fileName || 'Unknown'})`
@@ -1169,9 +1211,11 @@ registerNewDomainBtn?.addEventListener('click', async () => {
           manifestId = publishedApps[index].manifestId;
         }
       }
+    } else {
+      alert(`Domain ${domainName} is available!\n\nRegistering as unbound (no app yet).\nYou can bind an app to it later from the Domains page.`);
     }
     
-    // Sign domain registration
+    // Try to sign domain registration (optional - falls back to unsigned)
     const payload = {
       domain: domainName,
       owner: authState.ownerId,
@@ -1179,10 +1223,18 @@ registerNewDomainBtn?.addEventListener('click', async () => {
       timestamp: Date.now()
     };
     
-    const signedPayload = await signDomainOperation(payload);
+    let finalPayload = payload;
+    try {
+      finalPayload = await signDomainOperation(payload);
+      console.log('[Domain] Using cryptographic signature');
+    } catch (signError) {
+      console.warn('[Domain] Crypto signing failed, registering without signature:', signError.message);
+      // Continue with unsigned payload
+    }
     
-    await registryClient.registerDomain(signedPayload);
-    alert(`Domain ${domainName} registered successfully!${manifestId ? '\nBound to: ' + manifestId : ''}`);
+    await registryClient.registerDomain(finalPayload);
+    const status = manifestId ? `✅ Domain registered and bound!\nManifest: ${manifestId}` : `✅ Domain reserved!\n\nYou can bind an app to it from the Edit menu.`;
+    alert(status);
     
     await refreshDomainsList();
     domainSearchInput.value = '';
@@ -1197,11 +1249,20 @@ registerNewDomainBtn?.addEventListener('click', async () => {
 refreshDomainsBtn?.addEventListener('click', refreshDomainsList);
 
 registerDomainBtn?.addEventListener('click', async () => {
-  const domain = domainInput?.value.trim();
+  let domain = domainInput?.value.trim();
   const owner = ownerInput?.value.trim() || authState?.ownerId;
   
   if (!domain || !owner) {
     appendRegistryLog('Domain and Owner are required');
+    return;
+  }
+  
+  // Validate .dweb domain
+  if (!domain.includes('.')) {
+    domain = `${domain}.dweb`;
+    domainInput.value = domain;
+  } else if (!domain.endsWith('.dweb')) {
+    appendRegistryLog('Error: Only .dweb domains are allowed');
     return;
   }
   
