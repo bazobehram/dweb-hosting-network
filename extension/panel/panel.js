@@ -239,6 +239,7 @@ openResolverFromSidebar?.addEventListener('click', () => {
 });
 
 async function refreshDashboardOverview() {
+  console.log('[Dashboard] Refreshing overview... peers:', peers ? peers.length : 0);
   // Update stats
   const appsCountEl = document.getElementById('dashboardAppsCount');
   const domainsCountEl = document.getElementById('dashboardDomainsCount');
@@ -1714,6 +1715,9 @@ async function attemptAutoConnect() {
       autoConnect: true
     });
     if (connectBtn) connectBtn.disabled = true;
+    
+    // Refresh dashboard after successful connection
+    refreshDashboardOverview().catch(err => console.warn('[Dashboard] Initial refresh failed:', err));
   } catch (error) {
     setSidebarStatus('unknown');
     connectionManager = null;
@@ -2065,6 +2069,8 @@ function registerManagerEvents(manager) {
     appendLog(`Registered as ${payload.peerId}`);
     updatePeerList(payload.peers ?? []);
     manager.requestPeerList();
+    // Refresh dashboard when registered (we now have peer list)
+    refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh on register failed:', err));
   });
 
   manager.addEventListener('signaling', (event) => {
@@ -2072,6 +2078,8 @@ function registerManagerEvents(manager) {
     if (message.type === 'peer-list') {
       appendLog(`Discovered ${message.peers.length} peers.`);
       updatePeerList(message.peers);
+      // Update dashboard in real-time
+      refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
       return;
     }
 
@@ -2093,6 +2101,8 @@ function registerManagerEvents(manager) {
         latencyMs: message.metadata?.latencyMs ?? null,
         successRate: message.metadata?.successRate ?? null
       });
+      // Update dashboard in real-time
+      refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
       return;
     }
 
@@ -2106,6 +2116,8 @@ function registerManagerEvents(manager) {
         latencyMs: null,
         successRate: 0
       });
+      // Update dashboard in real-time
+      refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
       return;
     }
 
@@ -2167,6 +2179,8 @@ function registerManagerEvents(manager) {
     messageInput.focus();
     appendChannelLog('Data channel opened.');
     replicationManager.handleChannelOpen();
+    // Update dashboard when channel opens
+    refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
   });
 
   manager.addEventListener('channel-close', () => {
@@ -2185,6 +2199,8 @@ function registerManagerEvents(manager) {
     if (connectionManager) {
       replicationManager.handleChannelClosed(connectionManager.targetPeerId ?? null);
     }
+    // Update dashboard when channel closes
+    refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
   });
 
   manager.addEventListener('channel-message', (event) => {
