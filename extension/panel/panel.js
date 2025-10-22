@@ -4070,10 +4070,9 @@ function refreshRegisterButtonState() {
 }
 
 // Attempt auto-connection when authenticated
-// Disabled: Background peer service handles connection
-// if (authState?.ownerId) {
-//   setTimeout(() => attemptAutoConnect(), 500);
-// }
+if (authState?.ownerId) {
+  setTimeout(() => attemptAutoConnect(), 500);
+}
 
 // Query background peer status instead
 function refreshBackgroundPeerStatus() {
