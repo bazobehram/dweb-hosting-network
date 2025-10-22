@@ -143,20 +143,22 @@ function setupMainConnectionHandlers() {
   });
   
   connectionManager.addEventListener('channel-open', (event) => {
-    console.log('[Offscreen] Incoming peer connection opened');
+    const remotePeerId = connectionManager.targetPeerId;
+    console.log(`[Offscreen] Incoming connection from: ${remotePeerId}`);
+    
     // Track incoming connection
-    if (connectionManager.targetPeerId) {
-      activePeerConnections.set(connectionManager.targetPeerId, {
+    if (remotePeerId && !activePeerConnections.has(remotePeerId)) {
+      activePeerConnections.set(remotePeerId, {
         manager: connectionManager,
         status: 'connected',
-        connectedAt: Date.now()
+        connectedAt: Date.now(),
+        incoming: true
       });
-      console.log(`[Offscreen] Active connections: ${activePeerConnections.size}`);
+      console.log(`[Offscreen] Total active connections: ${activePeerConnections.size}`);
       
-      // Notify service worker
       chrome.runtime.sendMessage({
         type: 'peer-connected',
-        peerId: connectionManager.targetPeerId,
+        peerId: remotePeerId,
         totalConnections: activePeerConnections.size
       });
     }
@@ -192,22 +194,88 @@ async function connectToLatestPeer() {
     return;
   }
   
-  // Already have active connections?
-  if (connectionManager.targetPeerId && connectionManager.isChannelReady?.()) {
-    console.log('[Offscreen] Already connected to a peer');
+  // Connect to all peers that we haven't connected to yet
+  for (const peer of discoveredPeers) {
+    if (activePeerConnections.has(peer.peerId)) {
+      console.log(`[Offscreen] Already connected to ${peer.peerId}`);
+      continue;
+    }
+    
+    await connectToPeer(peer.peerId);
+  }
+}
+
+async function connectToPeer(targetPeerId) {
+  if (!connectionManager || !targetPeerId || targetPeerId === localPeerId) {
     return;
   }
   
-  // Get the first discovered peer
-  const targetPeer = discoveredPeers[0];
-  if (!targetPeer) return;
+  if (activePeerConnections.has(targetPeerId)) {
+    return;
+  }
   
   try {
-    console.log(`[Offscreen] Connecting to peer: ${targetPeer.peerId}`);
-    await connectionManager.initiateConnection(targetPeer.peerId);
-    console.log(`[Offscreen] Connection initiated successfully`);
+    console.log(`[Offscreen] Creating connection to peer: ${targetPeerId}`);
+    
+    // Create new manager for this peer
+    const peerManager = new WebRTCConnectionManager({
+      signalingUrl: DEFAULT_SIGNALING_URL,
+      peerId: localPeerId,
+      authToken: connectionManager.authToken
+    });
+    
+    // Share signaling client
+    peerManager.signalingClient = connectionManager.signalingClient;
+    peerManager.iceServers = connectionManager.iceServers;
+    peerManager.peerId = localPeerId;
+    
+    // Set up event handlers for this specific peer
+    peerManager.addEventListener('channel-open', () => {
+      console.log(`[Offscreen] Connected to peer: ${targetPeerId}`);
+      activePeerConnections.set(targetPeerId, {
+        manager: peerManager,
+        status: 'connected',
+        connectedAt: Date.now()
+      });
+      console.log(`[Offscreen] Total active connections: ${activePeerConnections.size}`);
+      
+      chrome.runtime.sendMessage({
+        type: 'peer-connected',
+        peerId: targetPeerId,
+        totalConnections: activePeerConnections.size
+      });
+    });
+    
+    peerManager.addEventListener('channel-close', () => {
+      console.log(`[Offscreen] Disconnected from peer: ${targetPeerId}`);
+      activePeerConnections.delete(targetPeerId);
+    });
+    
+    peerManager.addEventListener('channel-message', async (event) => {
+      if (event.detail.kind === 'text') {
+        try {
+          const message = JSON.parse(event.detail.data);
+          await handlePeerMessage(message, peerManager, targetPeerId);
+        } catch (error) {
+          console.error(`[Offscreen] Message error from ${targetPeerId}:`, error);
+        }
+      }
+    });
+    
+    // Mark as connecting
+    activePeerConnections.set(targetPeerId, {
+      manager: peerManager,
+      status: 'connecting',
+      connectedAt: Date.now()
+    });
+    
+    // Initiate connection
+    await peerManager.initiateConnection(targetPeerId);
+    console.log(`[Offscreen] Connection initiated to ${targetPeerId}`);
+    
   } catch (error) {
-    console.error(`[Offscreen] Failed to connect:`, error);
+    console.error(`[Offscreen] Failed to connect to ${targetPeerId}:`, error);
+    activePeerConnections.delete(targetPeerId);
   }
 }
 
