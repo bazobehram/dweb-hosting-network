@@ -500,6 +500,8 @@
             <div class="account-info">
               <p><strong>Owner ID:</strong> <code id="settingsOwnerId">—</code></p>
               <p class="hint">This is your unique identifier for domain ownership.</p>
+              <button id="signOutBtn" class="secondary">Sign Out & Clear Identity</button>
+              <p class="hint" style="margin-top: 8px; color: var(--danger);">⚠️ Warning: This will permanently delete your cryptographic keypair. Export it first if you want to keep it.</p>
             </div>
           </div>
           
@@ -513,8 +515,10 @@
             </label>
             <p class="hint">When enabled, you automatically participate in the P2P network even when the panel is closed. Your browser will store and serve chunks to other users, contributing to network resilience.</p>
             <div id="backgroundPeerStatus" class="status-info">
-              <p><strong>Status:</strong> <span id="bgPeerStatusText">Initializing...</span></p>
+              <p><strong>Status:</strong> <span id="bgPeerStatusText">Checking...</span></p>
               <p><strong>Peer ID:</strong> <code id="bgPeerIdText">—</code></p>
+              <p><strong>Connected Peers:</strong> <span id="bgPeerCountText">0</span></p>
+              <button id="refreshBgPeerStatus" class="secondary small">Refresh Status</button>
             </div>
           </div>
           

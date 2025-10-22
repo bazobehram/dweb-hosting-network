@@ -4076,11 +4076,88 @@ function refreshRegisterButtonState() {
 // }
 
 // Query background peer status instead
-chrome.runtime.sendMessage({ type: 'background-peer-status' }, (response) => {
-  if (chrome.runtime.lastError) return;
-  if (response?.connected) {
-    console.log('[Panel] Background peer is active:', response.peerId);
-    setSidebarStatus(response.relayMode ? 'relay' : 'peer');
+function refreshBackgroundPeerStatus() {
+  chrome.runtime.sendMessage({ type: 'background-peer-status' }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('[Panel] Background peer status error:', chrome.runtime.lastError);
+      if (document.getElementById('bgPeerStatusText')) {
+        document.getElementById('bgPeerStatusText').textContent = 'Error';
+      }
+      return;
+    }
+    
+    if (response?.connected) {
+      console.log('[Panel] Background peer is active:', response.peerId);
+      setSidebarStatus(response.relayMode ? 'relay' : 'peer');
+      
+      if (document.getElementById('bgPeerStatusText')) {
+        document.getElementById('bgPeerStatusText').textContent = 'Connected';
+      }
+      if (document.getElementById('bgPeerIdText')) {
+        document.getElementById('bgPeerIdText').textContent = response.peerId || '—';
+      }
+      if (document.getElementById('bgPeerCountText')) {
+        document.getElementById('bgPeerCountText').textContent = response.peerCount || '0';
+      }
+    } else {
+      if (document.getElementById('bgPeerStatusText')) {
+        document.getElementById('bgPeerStatusText').textContent = 'Disconnected';
+      }
+    }
+  });
+}
+
+refreshBackgroundPeerStatus();
+
+// Refresh button
+const refreshBgPeerStatus = document.getElementById('refreshBgPeerStatus');
+refreshBgPeerStatus?.addEventListener('click', refreshBackgroundPeerStatus);
+
+// Sign out button
+const signOutBtn = document.getElementById('signOutBtn');
+signOutBtn?.addEventListener('click', async () => {
+  const confirmed = confirm(
+    'Are you sure you want to sign out?\n\n' +
+    'This will:\n' +
+    '- Delete your cryptographic identity\n' +
+    '- Clear all published apps\n' +
+    '- Clear all settings\n\n' +
+    'You cannot undo this action!'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    // Clear all storage
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    
+    // Clear IndexedDB (keypair)
+    if (authState?.ownerId) {
+      const dbRequest = indexedDB.deleteDatabase('dweb-identity');
+      dbRequest.onsuccess = () => console.log('[Auth] Keypair database deleted');
+    }
+    
+    // Clear chrome storage
+    chrome.storage.local.clear(() => {
+      console.log('[Auth] Chrome storage cleared');
+    });
+    
+    // Reset state
+    authState = null;
+    publishedApps = [];
+    
+    // Show auth overlay
+    showAuthOverlay();
+    updateOwnerBadge(null);
+    
+    alert('Signed out successfully. Please reload the extension.');
+    
+    // Reload extension
+    chrome.runtime.reload();
+  } catch (error) {
+    console.error('[Auth] Sign out error:', error);
+    alert(`Sign out failed: ${error.message}`);
   }
 });
 

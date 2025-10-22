@@ -15,6 +15,7 @@ let chunkManager = null;
 let registryClient = null;
 let localPeerId = null;
 const chunkCache = new Map();
+let discoveredPeers = [];
 
 const DEFAULT_SIGNALING_URL = 'ws://34.107.74.70:8787';
 const DEFAULT_REGISTRY_URL = 'http://34.107.74.70:8788';
@@ -144,6 +145,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({
       connected: Boolean(connectionManager),
       peerId: localPeerId,
+      peerCount: discoveredPeers.length,
       relayMode: false // TODO: implement relay detection
     });
     return true;
@@ -223,6 +225,26 @@ function setupBackgroundPeerEventHandlers() {
 
   connectionManager.addEventListener('registered', (event) => {
     console.log('[DWeb] Background peer registered:', event.detail.peerId);
+    if (event.detail.peers && Array.isArray(event.detail.peers)) {
+      discoveredPeers = event.detail.peers.filter(p => p.peerId !== localPeerId);
+      console.log('[DWeb] Discovered peers:', discoveredPeers.length);
+    }
+  });
+
+  connectionManager.addEventListener('signaling', (event) => {
+    const message = event.detail;
+    if (message.type === 'peer-list') {
+      discoveredPeers = (message.peers || []).filter(p => p.peerId !== localPeerId);
+      console.log('[DWeb] Peer list updated:', discoveredPeers.length);
+    } else if (message.type === 'peer-joined') {
+      if (!discoveredPeers.find(p => p.peerId === message.peerId)) {
+        discoveredPeers.push({ peerId: message.peerId });
+        console.log('[DWeb] Peer joined:', message.peerId);
+      }
+    } else if (message.type === 'peer-left') {
+      discoveredPeers = discoveredPeers.filter(p => p.peerId !== message.peerId);
+      console.log('[DWeb] Peer left:', message.peerId);
+    }
   });
 
   connectionManager.addEventListener('channel-message', async (event) => {
