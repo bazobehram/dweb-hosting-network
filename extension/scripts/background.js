@@ -189,6 +189,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
+// Handle keyboard shortcuts
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'open-panel') {
+    chrome.tabs.create({ url: chrome.runtime.getURL('panel/index.html') });
+  }
+});
+
 // ============================================
 // Offscreen Document Management
 // ============================================
