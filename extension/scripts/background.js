@@ -16,6 +16,8 @@ let registryClient = null;
 let localPeerId = null;
 const chunkCache = new Map();
 let discoveredPeers = [];
+const activePeerConnections = new Map(); // peerId -> { manager, status, connectedAt }
+const connectionAttempts = new Map(); // peerId -> attemptCount
 
 const DEFAULT_SIGNALING_URL = 'ws://34.107.74.70:8787';
 const DEFAULT_REGISTRY_URL = 'http://34.107.74.70:8788';
@@ -145,7 +147,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({
       connected: Boolean(connectionManager),
       peerId: localPeerId,
-      peerCount: discoveredPeers.length,
+      peerCount: activePeerConnections.size,
+      discoveredCount: discoveredPeers.length,
       relayMode: false // TODO: implement relay detection
     });
     return true;
@@ -215,6 +218,8 @@ function disconnectBackgroundPeer() {
     }
     connectionManager = null;
   }
+  activePeerConnections.clear();
+  connectionAttempts.clear();
   chunkCache.clear();
   localPeerId = null;
   console.log('[DWeb] Background peer disconnected');
@@ -228,6 +233,8 @@ function setupBackgroundPeerEventHandlers() {
     if (event.detail.peers && Array.isArray(event.detail.peers)) {
       discoveredPeers = event.detail.peers.filter(p => p.peerId !== localPeerId);
       console.log('[DWeb] Discovered peers:', discoveredPeers.length);
+      // Auto-connect to discovered peers
+      connectToDiscoveredPeers();
     }
   });
 
@@ -236,34 +243,29 @@ function setupBackgroundPeerEventHandlers() {
     if (message.type === 'peer-list') {
       discoveredPeers = (message.peers || []).filter(p => p.peerId !== localPeerId);
       console.log('[DWeb] Peer list updated:', discoveredPeers.length);
+      connectToDiscoveredPeers();
     } else if (message.type === 'peer-joined') {
       if (!discoveredPeers.find(p => p.peerId === message.peerId)) {
         discoveredPeers.push({ peerId: message.peerId });
         console.log('[DWeb] Peer joined:', message.peerId);
+        // Auto-connect to new peer
+        connectToPeer(message.peerId);
       }
     } else if (message.type === 'peer-left') {
       discoveredPeers = discoveredPeers.filter(p => p.peerId !== message.peerId);
       console.log('[DWeb] Peer left:', message.peerId);
+      // Clean up connection
+      activePeerConnections.delete(message.peerId);
     }
   });
 
-  connectionManager.addEventListener('channel-message', async (event) => {
-    if (event.detail.kind === 'text') {
-      try {
-        const message = JSON.parse(event.detail.data);
-        await handleBackgroundPeerMessage(message);
-      } catch (error) {
-        console.error('[DWeb] Background peer message handling error:', error);
-      }
-    }
-  });
 
   connectionManager.addEventListener('error', (event) => {
     console.error('[DWeb] Background peer error:', event.detail);
   });
 }
 
-async function handleBackgroundPeerMessage(message) {
+async function handleBackgroundPeerMessage(message, manager = null, fromPeerId = null) {
   switch (message.type) {
     case 'chunk-upload':
       await handleChunkUpload(message);
@@ -297,7 +299,8 @@ async function handleChunkUpload(message) {
       const chunkBytes = base64ToUint8Array(data);
       const computed = await chunkManager.computeHash(chunkBytes.buffer);
       if (computed !== hash) {
-        connectionManager?.sendJson({
+        const mgr = manager || connectionManager;
+        mgr?.sendJson({
           type: 'chunk-upload-nack',
           manifestId,
           chunkIndex,
@@ -317,7 +320,8 @@ async function handleChunkUpload(message) {
     console.log(`[DWeb] Chunk ${chunkIndex} cached for manifest ${manifestId}`);
 
     // Send ACK
-    connectionManager?.sendJson({
+    const mgr = manager || connectionManager;
+    mgr?.sendJson({
       type: 'chunk-upload-ack',
       manifestId,
       chunkIndex,
@@ -339,7 +343,8 @@ async function handleChunkUpload(message) {
 
   } catch (error) {
     console.error('[DWeb] Chunk upload handling failed:', error);
-    connectionManager?.sendJson({
+    const mgr = manager || connectionManager;
+    mgr?.sendJson({
       type: 'chunk-upload-nack',
       manifestId,
       chunkIndex,
@@ -355,8 +360,9 @@ async function handleChunkRequest(message) {
   // Check cache
   const cached = chunkCache.get(manifestId)?.[chunkIndex];
   
+  const mgr = manager || connectionManager;
   if (cached) {
-    connectionManager?.sendJson({
+    mgr?.sendJson({
       type: 'chunk-response',
       requestId,
       manifestId,
@@ -365,7 +371,7 @@ async function handleChunkRequest(message) {
     });
     console.log(`[DWeb] Served chunk ${chunkIndex} from cache`);
   } else {
-    connectionManager?.sendJson({
+    mgr?.sendJson({
       type: 'chunk-error',
       requestId,
       manifestId,
@@ -374,6 +380,104 @@ async function handleChunkRequest(message) {
     });
     console.log(`[DWeb] Chunk ${chunkIndex} not found in cache`);
   }
+}
+
+// ============================================
+// Peer Connection Management
+// ============================================
+
+async function connectToDiscoveredPeers() {
+  for (const peer of discoveredPeers) {
+    if (!activePeerConnections.has(peer.peerId)) {
+      await connectToPeer(peer.peerId);
+    }
+  }
+}
+
+async function connectToPeer(targetPeerId) {
+  if (!connectionManager || !targetPeerId || targetPeerId === localPeerId) {
+    return;
+  }
+
+  // Check if already connected or attempting
+  const existing = activePeerConnections.get(targetPeerId);
+  if (existing) {
+    console.log(`[DWeb] Already ${existing.status} to peer ${targetPeerId}`);
+    return;
+  }
+
+  // Limit connection attempts
+  const attempts = connectionAttempts.get(targetPeerId) || 0;
+  if (attempts >= 3) {
+    console.log(`[DWeb] Max connection attempts reached for ${targetPeerId}`);
+    return;
+  }
+
+  connectionAttempts.set(targetPeerId, attempts + 1);
+
+  try {
+    console.log(`[DWeb] Initiating connection to peer ${targetPeerId}`);
+    
+    // Create a new connection manager for this peer
+    const peerConnectionManager = new WebRTCConnectionManager({
+      signalingUrl: DEFAULT_SIGNALING_URL,
+      peerId: localPeerId,
+      authToken: connectionManager.authToken
+    });
+
+    // Set up event handlers for this peer connection
+    setupPeerConnectionHandlers(peerConnectionManager, targetPeerId);
+
+    // Use existing signaling client from main connection manager
+    peerConnectionManager.signalingClient = connectionManager.signalingClient;
+    peerConnectionManager.iceServers = connectionManager.iceServers;
+
+    // Mark as connecting
+    activePeerConnections.set(targetPeerId, {
+      manager: peerConnectionManager,
+      status: 'connecting',
+      connectedAt: Date.now()
+    });
+
+    // Initiate the connection
+    await peerConnectionManager.initiateConnection(targetPeerId);
+    console.log(`[DWeb] Connection initiated to ${targetPeerId}`);
+  } catch (error) {
+    console.error(`[DWeb] Failed to connect to peer ${targetPeerId}:`, error);
+    activePeerConnections.delete(targetPeerId);
+  }
+}
+
+function setupPeerConnectionHandlers(manager, targetPeerId) {
+  manager.addEventListener('channel-open', () => {
+    console.log(`[DWeb] Data channel opened with ${targetPeerId}`);
+    const conn = activePeerConnections.get(targetPeerId);
+    if (conn) {
+      conn.status = 'connected';
+      conn.connectedAt = Date.now();
+      console.log(`[DWeb] Active connections: ${activePeerConnections.size}`);
+    }
+  });
+
+  manager.addEventListener('channel-close', () => {
+    console.log(`[DWeb] Data channel closed with ${targetPeerId}`);
+    activePeerConnections.delete(targetPeerId);
+  });
+
+  manager.addEventListener('channel-message', async (event) => {
+    if (event.detail.kind === 'text') {
+      try {
+        const message = JSON.parse(event.detail.data);
+        await handleBackgroundPeerMessage(message, manager, targetPeerId);
+      } catch (error) {
+        console.error(`[DWeb] Message handling error from ${targetPeerId}:`, error);
+      }
+    }
+  });
+
+  manager.addEventListener('error', (event) => {
+    console.error(`[DWeb] Peer connection error with ${targetPeerId}:`, event.detail);
+  });
 }
 
 function base64ToUint8Array(base64) {
