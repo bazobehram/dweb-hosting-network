@@ -1666,16 +1666,24 @@ function setupReplicationAckListener() {
 
 // Auto-connect on panel load
 async function attemptAutoConnect() {
-  if (connectionManager) return; // Already connected
+  console.log('[Panel] attemptAutoConnect called');
+  if (connectionManager) {
+    console.log('[Panel] Already connected, skipping');
+    return; // Already connected
+  }
   
   const url = signalingInput?.value?.trim() || DEFAULT_SIGNALING_URL;
+  console.log('[Panel] Signaling URL:', url);
   if (!url || (!url.startsWith('ws://') && !url.startsWith('wss://'))) {
+    console.log('[Panel] Invalid signaling URL, setting status to unknown');
     setSidebarStatus('unknown');
     return;
   }
   
   const authToken = signalingAuthTokenInput?.value?.trim() || storedSignalingAuthToken || '';
   const requestedPeerId = peerIdInput?.value?.trim() || generatePeerId();
+  
+  console.log('[Panel] Attempting connection with peer ID:', requestedPeerId);
   
   try {
     connectionManager = new WebRTCConnectionManager({
@@ -1684,9 +1692,12 @@ async function attemptAutoConnect() {
       authToken: authToken || null
     });
     
+    console.log('[Panel] WebRTCConnectionManager created, registering events...');
     registerManagerEvents(connectionManager);
     
+    console.log('[Panel] Connecting to signaling server...');
     await connectionManager.connect();
+    console.log('[Panel] ✅ Connected successfully');
     if (connectionManager.updateRelayMode) {
       await connectionManager.updateRelayMode();
     }
@@ -4069,10 +4080,8 @@ function refreshRegisterButtonState() {
   }
 }
 
-// Attempt auto-connection when authenticated
-if (authState?.ownerId) {
-  setTimeout(() => attemptAutoConnect(), 500);
-}
+// Attempt auto-connection (always, not just when authenticated)
+setTimeout(() => attemptAutoConnect(), 500);
 
 // Query background peer status instead
 function refreshBackgroundPeerStatus() {

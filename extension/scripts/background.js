@@ -26,16 +26,14 @@ const DEFAULT_REGISTRY_API_KEY = 'registry-test-key';
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[DWeb] Extension installed');
-  // Auto-enable background peer service
-  chrome.storage.local.set({ 'dweb-background-peer-enabled': true }, () => {
-    console.log('[DWeb] Background peer service enabled by default');
-    initializeBackgroundPeer();
+  // Background peer disabled - using panel-based peers only
+  chrome.storage.local.set({ 'dweb-background-peer-enabled': false }, () => {
+    console.log('[DWeb] Background peer service disabled (panel-only mode)');
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log('[DWeb] Extension startup');
-  initializeBackgroundPeer();
+  console.log('[DWeb] Extension startup (background peer disabled)');
 });
 
 // Intercept .dweb navigation and redirect to resolver
