@@ -104,7 +104,9 @@ function setupMainConnectionHandlers() {
     if (event.detail.peers && Array.isArray(event.detail.peers)) {
       discoveredPeers = event.detail.peers.filter(p => p.peerId !== localPeerId);
       console.log('[Offscreen] Discovered peers:', discoveredPeers.length);
-      connectToDiscoveredPeers();
+      console.log('[Offscreen] Waiting for incoming connections (passive mode)');
+      // Don't initiate connections - wait for others to connect to us
+      // This simplifies the architecture and avoids the multi-peer connection issue
     }
   });
   
@@ -113,118 +115,55 @@ function setupMainConnectionHandlers() {
     if (message.type === 'peer-list') {
       discoveredPeers = (message.peers || []).filter(p => p.peerId !== localPeerId);
       console.log('[Offscreen] Peer list updated:', discoveredPeers.length);
-      connectToDiscoveredPeers();
     } else if (message.type === 'peer-joined') {
       if (!discoveredPeers.find(p => p.peerId === message.peerId)) {
         discoveredPeers.push({ peerId: message.peerId });
-        console.log('[Offscreen] Peer joined:', message.peerId);
-        connectToPeer(message.peerId);
+        console.log('[Offscreen] Peer joined:', message.peerId, '(waiting for their connection)');
       }
     } else if (message.type === 'peer-left') {
       discoveredPeers = discoveredPeers.filter(p => p.peerId !== message.peerId);
       console.log('[Offscreen] Peer left:', message.peerId);
-      activePeerConnections.delete(message.peerId);
     }
   });
   
-  connectionManager.addEventListener('error', (event) => {
-    console.error('[Offscreen] Connection error:', event.detail);
-  });
-}
-
-async function connectToDiscoveredPeers() {
-  for (const peer of discoveredPeers) {
-    if (!activePeerConnections.has(peer.peerId)) {
-      await connectToPeer(peer.peerId);
-    }
-  }
-}
-
-async function connectToPeer(targetPeerId) {
-  if (!connectionManager || !targetPeerId || targetPeerId === localPeerId) {
-    return;
-  }
-  
-  const existing = activePeerConnections.get(targetPeerId);
-  if (existing) {
-    console.log(`[Offscreen] Already ${existing.status} to peer ${targetPeerId}`);
-    return;
-  }
-  
-  const attempts = connectionAttempts.get(targetPeerId) || 0;
-  if (attempts >= 3) {
-    console.log(`[Offscreen] Max connection attempts reached for ${targetPeerId}`);
-    return;
-  }
-  
-  connectionAttempts.set(targetPeerId, attempts + 1);
-  
-  try {
-    console.log(`[Offscreen] Initiating connection to peer ${targetPeerId}`);
-    
-    const peerConnectionManager = new WebRTCConnectionManager({
-      signalingUrl: DEFAULT_SIGNALING_URL,
-      peerId: localPeerId,
-      authToken: connectionManager.authToken
-    });
-    
-    setupPeerConnectionHandlers(peerConnectionManager, targetPeerId);
-    
-    peerConnectionManager.signalingClient = connectionManager.signalingClient;
-    peerConnectionManager.iceServers = connectionManager.iceServers;
-    
-    activePeerConnections.set(targetPeerId, {
-      manager: peerConnectionManager,
-      status: 'connecting',
-      connectedAt: Date.now()
-    });
-    
-    await peerConnectionManager.initiateConnection(targetPeerId);
-    console.log(`[Offscreen] Connection initiated to ${targetPeerId}`);
-  } catch (error) {
-    console.error(`[Offscreen] Failed to connect to peer ${targetPeerId}:`, error);
-    activePeerConnections.delete(targetPeerId);
-  }
-}
-
-function setupPeerConnectionHandlers(manager, targetPeerId) {
-  manager.addEventListener('channel-open', () => {
-    console.log(`[Offscreen] Data channel opened with ${targetPeerId}`);
-    const conn = activePeerConnections.get(targetPeerId);
-    if (conn) {
-      conn.status = 'connected';
-      conn.connectedAt = Date.now();
+  connectionManager.addEventListener('channel-open', (event) => {
+    console.log('[Offscreen] Incoming peer connection opened');
+    // Track incoming connection
+    if (connectionManager.targetPeerId) {
+      activePeerConnections.set(connectionManager.targetPeerId, {
+        manager: connectionManager,
+        status: 'connected',
+        connectedAt: Date.now()
+      });
       console.log(`[Offscreen] Active connections: ${activePeerConnections.size}`);
       
       // Notify service worker
       chrome.runtime.sendMessage({
         type: 'peer-connected',
-        peerId: targetPeerId,
+        peerId: connectionManager.targetPeerId,
         totalConnections: activePeerConnections.size
       });
     }
   });
-  
-  manager.addEventListener('channel-close', () => {
-    console.log(`[Offscreen] Data channel closed with ${targetPeerId}`);
-    activePeerConnections.delete(targetPeerId);
-  });
-  
-  manager.addEventListener('channel-message', async (event) => {
+
+  connectionManager.addEventListener('channel-message', async (event) => {
     if (event.detail.kind === 'text') {
       try {
         const message = JSON.parse(event.detail.data);
-        await handlePeerMessage(message, manager, targetPeerId);
+        await handlePeerMessage(message, connectionManager, connectionManager.targetPeerId);
       } catch (error) {
-        console.error(`[Offscreen] Message handling error from ${targetPeerId}:`, error);
+        console.error('[Offscreen] Message handling error:', error);
       }
     }
   });
-  
-  manager.addEventListener('error', (event) => {
-    console.error(`[Offscreen] Peer connection error with ${targetPeerId}:`, event.detail);
+
+  connectionManager.addEventListener('error', (event) => {
+    console.error('[Offscreen] Connection error:', event.detail);
   });
 }
+
+// Passive mode: We only accept incoming connections from other peers
+// This simplifies the architecture - no need to manage multiple connection managers
 
 async function handlePeerMessage(message, manager, fromPeerId) {
   switch (message.type) {
