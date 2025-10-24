@@ -44,8 +44,8 @@ const RESOLVE_CACHE_NAME = "dweb-resolver-cache-v1";
 
 let currentRegistryApiKey = loadRegistryApiKey();
 let storageApiKey = loadStorageApiKey();
-let storageServiceUrl =
-  normaliseStorageServiceUrl(loadStorageServiceUrl()) || DEFAULT_STORAGE_SERVICE_URL;
+// Force environment config, ignore cached URL in pure P2P mode
+let storageServiceUrl = config.storage;
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
 
 // Apply environment URLs
