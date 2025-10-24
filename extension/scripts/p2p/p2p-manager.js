@@ -10,6 +10,7 @@ import { webSockets } from '@libp2p/websockets';
 import { bootstrap } from '@libp2p/bootstrap';
 import { noise } from '@chainsafe/libp2p-noise';
 import { mplex } from '@libp2p/mplex';
+import { identify } from '@libp2p/identify';
 
 export class P2PManager extends EventTarget {
   constructor(config = {}) {
@@ -39,23 +40,27 @@ export class P2PManager extends EventTarget {
       console.log('[P2P] Starting libp2p node...');
       
       // Create libp2p node with browser-compatible transports
+      // Note: WebRTC disabled in Faz 0 (will be enabled in Faz 1 with bootstrap)
       this.node = await createLibp2p({
         addresses: {
           listen: []
         },
         transports: [
-          webRTC(),
+          // webRTC(), // Disabled - requires circuit-relay setup
           webSockets()
         ],
         connectionEncryption: [noise()],
         streamMuxers: [mplex()],
+        services: {
+          identify: identify()
+        },
         peerDiscovery: this.config.bootstrapPeers.length > 0 ? [
           bootstrap({
             list: this.config.bootstrapPeers
           })
         ] : [],
         connectionManager: {
-          minConnections: 1,
+          minConnections: 0,
           maxConnections: 50
         }
       });

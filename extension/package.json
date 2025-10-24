@@ -4,18 +4,23 @@
   "type": "module",
   "description": "DWeb Browser Extension with libp2p support",
   "scripts": {
-    "build": "echo 'Extension build not configured yet'",
-    "dev": "echo 'Extension dev mode'"
+    "build": "node build.cjs",
+    "dev": "node build.cjs --watch",
+    "build:p2p": "esbuild scripts/p2p/p2p-manager.js --bundle --format=esm --outfile=dist/p2p-manager.bundle.js",
+    "build:test": "esbuild panel/libp2p-test.js --bundle --format=esm --outfile=dist/libp2p-test.bundle.js"
   },
   "dependencies": {
-    "libp2p": "^1.0.0",
-    "@libp2p/webrtc": "^4.0.0",
-    "@libp2p/websockets": "^8.0.0",
+    "@chainsafe/libp2p-noise": "^15.0.0",
     "@libp2p/bootstrap": "^10.0.0",
+    "@libp2p/circuit-relay-v2": "^1.0.0",
+    "@libp2p/identify": "^4.0.6",
     "@libp2p/kad-dht": "^12.0.0",
     "@libp2p/mplex": "^10.0.0",
-    "@chainsafe/libp2p-noise": "^15.0.0",
-    "@libp2p/circuit-relay-v2": "^1.0.0"
+    "@libp2p/webrtc": "^4.0.0",
+    "@libp2p/websockets": "^8.0.0",
+    "libp2p": "^1.0.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "esbuild": "^0.19.12"
+  }
 }

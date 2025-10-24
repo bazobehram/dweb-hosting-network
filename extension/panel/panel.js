@@ -2,7 +2,7 @@ import { WebRTCConnectionManager } from '../scripts/webrtc/connectionManager.js'
 import { ChunkManager } from '../scripts/webrtc/chunkManager.js';
 import { RegistryClient } from '../scripts/api/registryClient.js';
 import { TelemetryClient } from '../scripts/telemetry/telemetryClient.js';
-import { P2PManager } from '../scripts/p2p/p2p-manager.js';
+// P2PManager is loaded via libp2p-test.js bundle
 import {
   generateKeypair,
   deriveOwnerIdFromPublicKey,
