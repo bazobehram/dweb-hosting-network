@@ -1,4 +1,4 @@
 export const settings = {
-  preferCache: true,
-  fallbackToRegistry: true
+  fallbackToRegistry: false,
+  preferCache: false
 };

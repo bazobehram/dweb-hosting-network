@@ -192,7 +192,7 @@ export class RegistryStore {
       const pointerEntry = chunkPointers[index] ?? { pointer: null, expiresAt: null };
       this.run(
         `INSERT INTO manifest_chunks (manifest_id, chunk_index, data, pointer, expires_at) VALUES (?, ?, ?, ?, ?)`,
-        [manifestId, index, chunkData[index] ?? null, pointerEntry.pointer, pointerEntry.expiresAt]
+        [manifestId, index, null, pointerEntry.pointer, pointerEntry.expiresAt]
       );
 
       this.recordChunkPointerHistory(manifestId, index, pointerEntry.pointer, pointerEntry.expiresAt, {
@@ -234,7 +234,8 @@ export class RegistryStore {
 
     chunkRows.forEach((chunk) => {
       if (chunk.chunk_index < chunkCount) {
-        chunkData[chunk.chunk_index] = chunk.data ?? null;
+        // Never expose or retain inline chunk data on the registry (VPS)
+        chunkData[chunk.chunk_index] = null;
         chunkPointers[chunk.chunk_index] = chunk.pointer ?? null;
         chunkPointerExpiresAt[chunk.chunk_index] = chunk.expires_at ?? null;
       }
@@ -298,7 +299,7 @@ export class RegistryStore {
     ).map((row) => row.peer_id);
 
     return {
-      data: chunk.data ?? null,
+      data: null,
       pointer: chunk.pointer ?? null,
       pointerExpiresAt: chunk.expires_at ?? null,
       replicas
@@ -330,8 +331,8 @@ export class RegistryStore {
       );
     } else {
       this.run(
-        'UPDATE manifest_chunks SET pointer = ?, expires_at = ?, data = CASE WHEN ? THEN NULL ELSE data END WHERE manifest_id = ? AND chunk_index = ?',
-        [pointerEntry.pointer, pointerEntry.expiresAt, removeData ? 1 : 0, manifestId, index]
+        'UPDATE manifest_chunks SET pointer = ?, expires_at = ?, data = NULL WHERE manifest_id = ? AND chunk_index = ?',
+        [pointerEntry.pointer, pointerEntry.expiresAt, manifestId, index]
       );
     }
 

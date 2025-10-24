@@ -92,13 +92,29 @@ if ("serviceWorker" in navigator) {
 
 resetResolveStats();
 
-// Auto-resolve if domain param exists in URL
+// Auto-resolve + viewer mode if domain param exists
 const urlParams = new URLSearchParams(window.location.search);
 const domainParam = urlParams.get('domain');
+const viewParam = urlParams.get('view');
+if (viewParam === '1') {
+  try {
+    document.querySelector('header')?.classList.add('hidden');
+    document.querySelector('.status')?.classList.add('hidden');
+    // Hide settings and log sections (second and third sections after status)
+    const sections = document.querySelectorAll('main > section');
+    sections.forEach((sec, idx) => {
+      // hide all except the last preview section
+      if (sec.querySelector('#previewFrame')) return;
+      sec.classList.add('hidden');
+    });
+    // Expand preview to full viewport
+    document.getElementById('previewFrame')?.setAttribute('style', 'min-height: calc(100vh - 40px);');
+  } catch {}
+}
 if (domainParam) {
   domainInput.value = domainParam;
   appendLog(`Auto-resolving ${domainParam}...`);
-  setTimeout(() => resolveBtn.click(), 500);
+  setTimeout(() => resolveBtn.click(), 300);
 }
 
 registryUrlInput.addEventListener("change", () => {
@@ -425,84 +441,16 @@ async function fetchChunk(manifestId, index, replicas) {
     }
   }
 
-  if (!settings.fallbackToRegistry) {
-    appendLog(`Skipping registry fallback for chunk ${index}.`);
-    noteFallback("registry-fallback-disabled");
-    recordChunkSource("fallback-none", {
-      chunkIndex: index,
-      durationMs: elapsedMs(),
-      fallbackTriggered: true,
-      fallbackReason: aggregatedFallbackReason() ?? "registry-fallback-disabled",
-      success: false
-    });
-    return null;
-  }
-
-  try {
-    const chunkRecord = await registryClient.getManifestChunk(manifestId, index);
-    if (!chunkRecord) {
-      appendLog(`Registry chunk ${index} not found.`);
-      noteFallback("registry-miss");
-    } else {
-      if (Array.isArray(chunkRecord.replicas) && chunkRecord.replicas.length) {
-        appendLog(`Chunk ${index} replicas: ${chunkRecord.replicas.join(", ")}`);
-      }
-
-      if (chunkRecord.data) {
-        appendLog(`Chunk ${index} served from registry.`);
-        noteFallback("registry-inline");
-        recordChunkSource("registry", {
-          chunkIndex: index,
-          durationMs: elapsedMs(),
-          fallbackTriggered: true,
-          fallbackReason: aggregatedFallbackReason(),
-          success: true
-        });
-        return base64ToUint8Array(chunkRecord.data);
-      }
-
-      if (chunkRecord.pointer) {
-        appendLog(`Chunk ${index} missing inline data, following pointer.`);
-        noteFallback("pointer");
-        try {
-          const headers = shouldAttachStorageHeaders(chunkRecord.pointer)
-            ? buildStorageHeaders({ Accept: "application/json" })
-            : { Accept: "application/json" };
-          const pointerResponse = await fetch(chunkRecord.pointer, {
-            headers,
-          });
-          if (pointerResponse.ok) {
-            const payload = await pointerResponse.json();
-            if (payload?.data) {
-              appendLog(`Chunk ${index} served via storage pointer.`);
-              recordChunkSource("pointer", {
-                chunkIndex: index,
-                durationMs: elapsedMs(),
-                fallbackTriggered: true,
-                fallbackReason: aggregatedFallbackReason(),
-                success: true
-              });
-              return base64ToUint8Array(payload.data);
-            }
-          } else {
-            appendLog(
-              `Pointer request failed for chunk ${index}: ${pointerResponse.status}`
-            );
-            noteFallback(`pointer-${pointerResponse.status}`);
-          }
-        } catch (error) {
-          appendLog(`Pointer fetch failed for chunk ${index}: ${error.message}`);
-          noteFallback("pointer-error");
-        }
-      } else {
-        appendLog(`Chunk ${index} has no data or storage pointer.`);
-        noteFallback("chunk-missing");
-      }
-    }
-  } catch (error) {
-    appendLog(`Registry chunk fetch failed: ${error.message}`);
-    noteFallback("registry-error");
-  }
+  // Pure P2P mode: no registry fallback, no storage pointer
+  appendLog(`Pure P2P mode: chunk ${index} must come from peers only.`);
+  noteFallback("peer-only-mode");
+  recordChunkSource("fallback-none", {
+    chunkIndex: index,
+    durationMs: elapsedMs(),
+    fallbackTriggered: true,
+    fallbackReason: "peer-only-mode",
+    success: false
+  });
 
   appendLog(`Chunk ${index} unavailable.`);
   noteFallback("chunk-unavailable");
@@ -543,6 +491,16 @@ function emitResolveSummary({ manifestId, domain, failureReason }) {
     relayUsage: false,
     failureReason: failureReason ?? null
   });
+
+  // Store lightweight local metrics (last 200 resolves) for dashboard cards
+  try {
+    chrome?.storage?.local?.get('dweb-local-metrics', (res) => {
+      const list = Array.isArray(res?.['dweb-local-metrics']) ? res['dweb-local-metrics'] : [];
+      list.push({ ts: Date.now(), ttfbMs, totalDurationMs, peerHits, fallbackHits, chunkCount: expectedChunks });
+      const pruned = list.slice(-200);
+      chrome.storage.local.set({ 'dweb-local-metrics': pruned });
+    });
+  } catch {}
 
   if (stats.firstByteAt !== null) {
     telemetry.emit("ttfb.measure", {

@@ -1,0 +1,14 @@
+{
+  "name": "@dweb/local-https-proxy",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local HTTPS intercept proxy for *.dweb that forwards to the DWeb gateway",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "http-mitm-proxy": "^0.8.1"
+  }
+}

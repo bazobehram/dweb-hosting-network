@@ -8,7 +8,7 @@ import { emitTelemetry } from '../../common/telemetry.js';
 const PORT = Number(process.env.STORAGE_PORT ?? 8789);
 const HOST = process.env.STORAGE_HOST ?? '0.0.0.0';
 const STORAGE_BACKEND = (
-  process.env.STORAGE_BACKEND ?? (process.env.STORAGE_S3_BUCKET ? 's3' : 'filesystem')
+  process.env.STORAGE_BACKEND ?? (process.env.STORAGE_S3_BUCKET ? 's3' : 'memory')
 ).toLowerCase();
 
 const COMPONENT_NAME = 'storage';

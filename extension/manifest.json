@@ -14,19 +14,29 @@
     "service_worker": "scripts/background.js",
     "type": "module"
   },
+  "omnibox": {
+    "keyword": "dweb"
+  },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*",
-    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'; child-src 'self'; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://34.107.74.70:* https://34.107.74.70:* ws://34.107.74.70:* wss://34.107.74.70:*"
   },
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "proxy",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
+    "http://*.dweb/*",
+    "https://*.dweb/*",
     "http://localhost/*",
     "https://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*",
+    "http://*.localhost/*",
     "http://34.107.74.70/*",
     "https://34.107.74.70/*"
   ]

@@ -47,6 +47,10 @@ export function registerRoutes(app, store, helpers = {}) {
   app.post('/manifests', async (request, reply) => {
     const manifest = request.body;
     validateManifest(manifest);
+    // Enforce no inline chunk data persistence on the server (VPS)
+    if (Array.isArray(manifest.chunkData)) {
+      manifest.chunkData = manifest.chunkData.map(() => null);
+    }
     const record = store.createManifest(manifest);
     reply.code(201);
     return record;

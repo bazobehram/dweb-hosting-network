@@ -144,6 +144,32 @@ button {
   border-bottom: 1px solid #1b2134;
 }
 
+.network-health-strip {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.network-health-strip .pill {
+  background: #1a2031;
+}
+
+.network-health-strip .ok {
+  background: rgba(46, 204, 113, 0.18);
+  color: #2ecc71;
+}
+
+.network-health-strip .warn {
+  background: rgba(241, 196, 15, 0.18);
+  color: #f1c40f;
+}
+
+.network-health-strip .err {
+  background: rgba(231, 76, 60, 0.18);
+  color: #e74c3c;
+}
+
 .metric-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

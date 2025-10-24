@@ -324,36 +324,126 @@ async function refreshDashboardMetrics() {
   const ttfbP50Card = document.getElementById('metricTtfb');
   const replicationSuccessCard = document.getElementById('metricReplication');
   const e2eStatusCard = document.getElementById('metricE2ERun');
-  
+
+  const applyLocalMetrics = () => new Promise((resolve) => {
+    try {
+      chrome?.storage?.local?.get(['dweb-local-metrics', 'dweb-local-replication'], (res) => {
+        const list = Array.isArray(res?.['dweb-local-metrics']) ? res['dweb-local-metrics'] : [];
+        const now = Date.now();
+        const windowed = list.filter((e) => typeof e?.ts === 'number' && now - e.ts <= 24 * 60 * 60 * 1000);
+        if (windowed.length === 0) {
+          if (directRatioCard) directRatioCard.textContent = '—';
+          if (ttfbP50Card) ttfbP50Card.textContent = '—';
+        } else {
+          const peer = windowed.reduce((a, b) => a + (Number(b.peerHits) || 0), 0);
+          const fb = windowed.reduce((a, b) => a + (Number(b.fallbackHits) || 0), 0);
+          const ratio = (peer + fb) > 0 ? Math.round((peer / (peer + fb)) * 100) : 0;
+          if (directRatioCard) directRatioCard.textContent = `${ratio}%`;
+
+          const ttfbs = windowed.map((e) => Number(e.ttfbMs) || 0).filter((v) => v > 0).sort((a,b)=>a-b);
+          const p50 = ttfbs.length ? ttfbs[Math.floor(ttfbs.length * 0.5)] : null;
+          if (ttfbP50Card) ttfbP50Card.textContent = p50 !== null ? `${Math.round(p50)} ms` : '—';
+        }
+        // Replication success
+        const repl = Array.isArray(res?.['dweb-local-replication']) ? res['dweb-local-replication'] : [];
+        const rwin = repl.filter((e) => typeof e?.ts === 'number' && now - e.ts <= 24 * 60 * 60 * 1000);
+        if (replicationSuccessCard) {
+          if (rwin.length === 0) replicationSuccessCard.textContent = '—';
+          else {
+            const succ = rwin.filter((e) => e?.ok === true).length;
+            replicationSuccessCard.textContent = `${Math.round((succ / rwin.length) * 100)}%`;
+          }
+        }
+        if (e2eStatusCard) e2eStatusCard.textContent = 'No telemetry';
+        resolve();
+      });
+    } catch {
+      if (directRatioCard) directRatioCard.textContent = '—';
+      if (ttfbP50Card) ttfbP50Card.textContent = '—';
+      if (replicationSuccessCard) replicationSuccessCard.textContent = '—';
+      if (e2eStatusCard) e2eStatusCard.textContent = 'No telemetry';
+      resolve();
+    }
+  });
+
   if (!telemetry || !telemetry.endpoint) {
-    if (directRatioCard) directRatioCard.textContent = '—';
-    if (ttfbP50Card) ttfbP50Card.textContent = '—';
-    if (replicationSuccessCard) replicationSuccessCard.textContent = '—';
-    if (e2eStatusCard) e2eStatusCard.textContent = 'No telemetry';
+    await applyLocalMetrics();
     return;
   }
-  
+
   try {
     const base = telemetry.endpoint.replace(/\/[^\/]*$/, '');
     const metricsUrl = `${base}/reports/metrics/summary?hours=24`;
     const response = await fetch(metricsUrl, { headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error(`Metrics fetch failed: ${response.status}`);
-    
+
     const data = await response.json();
     if (directRatioCard && typeof data.directRatio === 'number') {
       directRatioCard.textContent = `${Math.round(data.directRatio * 100)}%`;
+      directRatioCard.title = 'Share served directly by peers (24h)';
     }
-    if (ttfbP50Card && typeof data.ttfbP50 === 'number') {
-      ttfbP50Card.textContent = `${Math.round(data.ttfbP50)} ms`;
+    if (ttfbP50Card && (typeof data.ttfbP50 === 'number' || typeof data.ttfbP95 === 'number')) {
+      const p50 = typeof data.ttfbP50 === 'number' ? `${Math.round(data.ttfbP50)} ms` : '—';
+      const p95 = typeof data.ttfbP95 === 'number' ? `${Math.round(data.ttfbP95)} ms` : null;
+      ttfbP50Card.textContent = p95 ? `${p50} (p95 ${p95})` : p50;
     }
     if (replicationSuccessCard && typeof data.replicationSuccess === 'number') {
       replicationSuccessCard.textContent = `${Math.round(data.replicationSuccess * 100)}%`;
     }
     if (e2eStatusCard && data.latestE2E) {
-      e2eStatusCard.textContent = data.latestE2E.status ?? 'Unknown';
+      const ts = data.latestE2E.timestamp || data.latestE2E.time || null;
+      const age = ts ? timeAgo(Number(new Date(ts))) : null;
+      e2eStatusCard.textContent = age ? `${data.latestE2E.status} • ${age}` : (data.latestE2E.status ?? 'Unknown');
+      if (ts) e2eStatusCard.title = new Date(ts).toLocaleString();
     }
   } catch (error) {
     if (typeof console !== 'undefined') console.warn('[metrics]', error);
+    await applyLocalMetrics();
+  }
+}
+
+async function updateNetworkHealthStrip() {
+  const strip = document.getElementById('networkHealthStrip');
+  if (!strip) return;
+  const el = (id) => document.getElementById(id);
+  const set = (id, text, cls) => {
+    const s = el(id);
+    if (!s) return;
+    s.textContent = text;
+    s.classList.remove('ok','warn','err');
+    if (cls) s.classList.add(cls);
+  };
+
+  // Mode and peers (local, no network call)
+  const mode = sidebarStatusBadge?.textContent || 'Unknown';
+  set('nhMode', `Mode: ${mode}`);
+  set('nhPeers', `Peers: ${peers?.length ?? 0}`);
+
+  // Signaling: treat as OK when we have a connection manager instance
+  if (connectionManager) set('nhSignaling', 'Signaling: OK', 'ok'); else set('nhSignaling', 'Signaling: —');
+
+  // Registry connectivity
+  try {
+    await Promise.race([
+      registryClient.listDomains(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+    ]);
+    set('nhRegistry', 'Registry: OK', 'ok');
+  } catch {
+    set('nhRegistry', 'Registry: ERR', 'err');
+  }
+
+  // Storage health (optional). Only mark OK if /health responds with 200
+  try {
+    const url = `${storageServiceUrl}/health`;
+    const headers = buildStorageHeaders({ Accept: 'application/json' });
+    const res = await Promise.race([
+      fetch(url, { headers }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+    ]);
+    if (res && res.ok) set('nhStorage', 'Storage: OK', 'ok'); else set('nhStorage', 'Storage: ERR', 'err');
+  } catch {
+    set('nhStorage', 'Storage: ERR', 'err');
   }
 }
 
@@ -365,8 +455,11 @@ async function refreshDomainsList() {
     const result = await registryClient.listDomains();
     domainsTableBody.innerHTML = '';
     
-    const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
     
+    // Keep apps view in sync with latest bindings
+    syncAppDomainsFromList(allDomains);
+
     // Update datalists for search/inputs
     populateDomainSuggestionLists(allDomains);
     
@@ -586,6 +679,7 @@ async function unbindDomainFromBindingsView(domainName) {
   try {
     await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
     alert(`Domain ${domainName} has been unbound`);
+    updateLocalBindingsForDomainChange(domainName, null);
     await renderBindingsList();
   } catch (error) {
     alert(`Failed to unbind: ${error.message || error}`);
@@ -607,9 +701,10 @@ window.unbindDomain = async function (button) {
   if (!domain) return;
   if (!confirm(`Unbind domain ${domain}?`)) return;
   
-  try {
-    await registryClient.updateDomainBinding(domain, { manifestId: null });
+try {
+    await registryClient.updateDomainBinding(domain, { manifestId: 'unbound' });
     appendRegistryLog(`Domain ${domain} unbound`);
+    updateLocalBindingsForDomainChange(domain, null);
     await refreshDomainsList();
   } catch (error) {
     appendRegistryLog(`Failed to unbind ${domain}: ${error.message ?? error}`);
@@ -762,8 +857,10 @@ function activateView(viewId, { persist = true } = {}) {
   views.forEach((view) => view.classList.toggle('active', view === target));
   navButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === viewId));
   
-  if (viewId === 'dashboard') {
+if (viewId === 'dashboard') {
     refreshDashboardOverview();
+    refreshDashboardMetrics();
+    updateNetworkHealthStrip();
   } else if (viewId === 'hosting') {
     updateAppsPeerCounts().then(() => renderAppsList());
   } else if (viewId === 'domains') {
@@ -942,38 +1039,51 @@ createManifestBtn?.addEventListener('click', async () => {
 
 startReplicationBtn?.addEventListener('click', async () => {
   if (!currentManifest || !connectionManager) {
-    appendRegistryLog('Connect to peers first');
+    appendRegistryLog('❌ Pure P2P mode: You must connect to signaling first');
+    replicationProgress.innerHTML = '<p style="color:var(--danger);">Connect to peers before uploading</p>';
     return;
   }
   
   if (!peers || peers.length === 0) {
-    appendRegistryLog('No peers available for replication');
+    appendRegistryLog('❌ Pure P2P mode: No peers available. Content cannot be stored.');
+    replicationProgress.innerHTML = '<p style="color:var(--danger);">No peers online. Upload blocked in pure P2P mode.</p>';
     return;
   }
   
   startReplicationBtn.disabled = true;
   replicationProgressPill.textContent = 'Replicating...';
-  replicationState = { acks: 0, target: 3, peers: [] };
+  replicationState = { acks: 0, target: Math.min(peers.length, 3), peers: [] };
   
   try {
-    const targetPeers = peers.slice(0, 3);
-    replicationProgress.innerHTML = `<p>Sending to ${targetPeers.length} peer(s)...</p>`;
+    // First register manifest to get manifestId
+    await registerManifestWithRegistry(currentManifest);
+    appendRegistryLog(`✓ Manifest ${currentManifest.transferId} registered (metadata only)`);
     
+    const targetPeers = peers.slice(0, 3);
+    replicationProgress.innerHTML = `<p>Sending chunks to ${targetPeers.length} peer(s)...</p>`;
+    
+    // Send chunks to peers
     for (const peer of targetPeers) {
       const peerId = peer.peerId;
-      connectionManager.sendJson({
-        type: 'replication-request',
-        manifestId: currentManifest.transferId,
-        manifest: currentManifest,
-        timestamp: Date.now()
-      }, peerId);
       replicationState.peers.push({ peerId, status: 'pending' });
+      
+      // Send each chunk
+      const transfer = currentManifest.transfer;
+      if (transfer) {
+        for (let i = 0; i < transfer.totalChunks; i++) {
+          connectionManager.sendJson({
+            type: 'chunk-upload',
+            manifestId: currentManifest.transferId,
+            chunkIndex: i,
+            data: transfer.getChunkBase64(i),
+            hash: transfer.getChunkHash(i)
+          });
+        }
+      }
     }
     
     updateReplicationDisplay();
-    
-    await registerManifestWithRegistry(currentManifest);
-    appendRegistryLog(`Manifest ${currentManifest.transferId} registered`);
+    appendRegistryLog(`Chunks sent to ${targetPeers.length} peer(s). Awaiting ACKs...`);
     
   } catch (error) {
     replicationProgress.innerHTML += `<p style="color:var(--danger);">Error: ${escapeHtml(error.message ?? error)}</p>`;
@@ -987,9 +1097,11 @@ function updateReplicationDisplay() {
   
   const ackCount = replicationState.acks;
   const target = replicationState.target;
-  const quorumMet = ackCount >= 2;
+  // Pure P2P: need at least 1 peer replica
+  const minQuorum = 1;
+  const quorumMet = ackCount >= minQuorum;
   
-  let html = `<p><strong>ACKs:</strong> ${ackCount} / ${target}</p>`;
+  let html = `<p><strong>Peer Replicas:</strong> ${ackCount} / ${target}</p>`;
   html += '<ul class="peer-replica-list">';
   
   replicationState.peers.forEach((p) => {
@@ -1000,12 +1112,21 @@ function updateReplicationDisplay() {
   html += '</ul>';
   
   if (quorumMet) {
-    html += '<p style="color:var(--success);"><strong>Quorum reached!</strong> You can now bind domain.</p>';
-    replicationProgressPill.textContent = `${ackCount}/${target} ACKs ✓`;
+    html += '<p style="color:var(--success);"><strong>✓ Min replica reached!</strong> You can now bind domain.</p>';
+    replicationProgressPill.textContent = `${ackCount}/${target} replicas ✓`;
     registerDomainBtn.disabled = false;
+    // Record local replication success
+    try {
+      chrome?.storage?.local?.get('dweb-local-replication', (res) => {
+        const list = Array.isArray(res?.['dweb-local-replication']) ? res['dweb-local-replication'] : [];
+        list.push({ ts: Date.now(), ok: true });
+        chrome.storage.local.set({ 'dweb-local-replication': list.slice(-200) });
+      });
+    } catch {}
   } else {
-    html += `<p class="hint">Waiting for ${2 - ackCount} more ACK(s)...</p>`;
-    replicationProgressPill.textContent = `${ackCount}/${target} ACKs`;
+    html += `<p class="hint">⏳ Waiting for at least ${minQuorum} peer replica(s)... (Pure P2P mode)</p>`;
+    replicationProgressPill.textContent = `${ackCount}/${target} replicas`;
+    registerDomainBtn.disabled = true;
   }
   
   replicationProgress.innerHTML = html;
@@ -1065,6 +1186,85 @@ function saveAppsToStorage(apps) {
     );
   } catch {
     // ignore
+  }
+}
+
+// Keep publishedApps.domain values in sync with registry domain bindings
+function updateLocalBindingsForDomainChange(domainName, newManifestId) {
+  try {
+    if (!domainName) return false;
+    const normalized = String(domainName).toLowerCase();
+    let changed = false;
+
+    // 1) Remove this domain from any app that currently claims it
+    for (const app of publishedApps) {
+      if (typeof app.domain === 'string' && app.domain.toLowerCase() === normalized) {
+        delete app.domain;
+        changed = true;
+      }
+    }
+
+    // 2) Optionally assign to a new manifestId
+    if (newManifestId && newManifestId !== 'unbound') {
+      const target = publishedApps.find(a => a.manifestId === newManifestId);
+      if (target && target.domain !== domainName) {
+        target.domain = domainName;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      saveAppsToStorage(publishedApps);
+      renderAppsList();
+    }
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
+function syncAppDomainsFromList(allDomains) {
+  try {
+    if (!Array.isArray(allDomains) || !authState?.ownerId) return false;
+
+    // Build map manifestId -> first owned bound domain
+    const map = new Map();
+    for (const d of allDomains) {
+      if (!d) continue;
+      const mid = d.manifestId;
+      if (!mid || mid === 'unbound') continue;
+      if (d.owner !== authState.ownerId) continue;
+      if (!map.has(mid)) map.set(mid, d.domain);
+    }
+
+    let changed = false;
+    for (const app of publishedApps) {
+      const desired = map.get(app.manifestId) || null;
+      const current = app.domain || null;
+      if (current !== desired) {
+        if (desired) app.domain = desired; else delete app.domain;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      saveAppsToStorage(publishedApps);
+      renderAppsList();
+    }
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
+async function reconcilePublishedAppsWithRegistry() {
+  try {
+    if (!registryClient || !authState?.ownerId) return false;
+    const result = await registryClient.listDomains();
+    const allDomains = Array.isArray(result) ? result : (Array.isArray(result?.domains) ? result.domains : []);
+    return syncAppDomainsFromList(allDomains);
+  } catch {
+    return false;
   }
 }
 
@@ -1157,7 +1357,7 @@ function renderAppsList() {
 }
 
 window.openAppDomain = function(domain) {
-  const url = chrome.runtime.getURL(`resolver/index.html?domain=${encodeURIComponent(domain)}`);
+  const url = chrome.runtime.getURL(`resolver/index.html?view=1&domain=${encodeURIComponent(domain)}`);
   chrome.tabs.create({ url });
 };
 
@@ -1456,10 +1656,12 @@ quickBindDomainBtn?.addEventListener('click', async () => {
     if (existing) {
       if (existing.owner === authState.ownerId) {
         // If it's ours, just update the binding (reserved/unbound → bound)
-        await registryClient.updateDomainBinding(domainName, { manifestId: currentPublishManifest.manifestId });
+await registryClient.updateDomainBinding(domainName, { manifestId: currentPublishManifest.manifestId });
         currentPublishManifest.domain = domainName;
         publishedApps.push(currentPublishManifest);
         saveAppsToStorage(publishedApps);
+        // Ensure no other app still claims this domain locally
+        updateLocalBindingsForDomainChange(domainName, currentPublishManifest.manifestId);
         renderAppsList();
         alert(`✅ Domain ${domainName} bound to your app.`);
         hidePublishModal();
@@ -1490,10 +1692,12 @@ quickBindDomainBtn?.addEventListener('click', async () => {
     
     await registryClient.registerDomain(finalPayload);
     
-    // Update the published app with domain
+// Update the published app with domain
     currentPublishManifest.domain = domainName;
     publishedApps.push(currentPublishManifest);
     saveAppsToStorage(publishedApps);
+    // Ensure no other app still claims this domain locally
+    updateLocalBindingsForDomainChange(domainName, currentPublishManifest.manifestId);
     renderAppsList();
     
     alert(`✅ Success!\n\nDomain ${domainName} is now bound to your app!\n\nYou can access it by navigating to: ${domainName}`);
@@ -1583,12 +1787,8 @@ createBindingBtn?.addEventListener('click', async () => {
       alert(`✅ Domain ${domainName} registered and bound!`);
     }
     
-    // Update app with domain
-    const app = publishedApps.find(a => a.manifestId === manifestId);
-    if (app) {
-      app.domain = domainName;
-      saveAppsToStorage(publishedApps);
-    }
+    // Update local apps list to reflect the new binding
+    updateLocalBindingsForDomainChange(domainName, manifestId);
     
     // Reset form
     bindingAppSelect.value = '';
@@ -1639,9 +1839,12 @@ saveDomainBindBtn?.addEventListener('click', async () => {
       ? currentEditingDomain.manifestId 
       : null;
     
-    if (selectedManifestId !== currentBinding) {
+if (selectedManifestId !== currentBinding) {
       const newManifestId = selectedManifestId || 'unbound';
       await registryClient.updateDomainBinding(domainName, { manifestId: newManifestId });
+      
+      // Sync local apps state with this change
+      updateLocalBindingsForDomainChange(domainName, selectedManifestId);
       
       if (selectedManifestId) {
         alert(`✅ Domain ${domainName} bound to:\n${selectedManifestId}`);
@@ -1665,8 +1868,9 @@ unbindDomainModalBtn?.addEventListener('click', async () => {
   const domainName = currentEditingDomain.domain;
   if (!confirm(`Unbind domain ${domainName}? It will become reserved (unbound).`)) return;
   
-  try {
+try {
     await registryClient.updateDomainBinding(domainName, { manifestId: 'unbound' });
+    updateLocalBindingsForDomainChange(domainName, null);
     alert(`Domain ${domainName} is now unbound`);
     closeDomainBindModalFn();
     await refreshDomainsList();
@@ -1683,8 +1887,10 @@ transferDomainModalBtn?.addEventListener('click', async () => {
   
   if (!newOwner || !newOwner.trim()) return;
   
-  try {
+try {
     await registryClient.updateDomainBinding(domainName, { owner: newOwner.trim() });
+    // Remove from our local mapping since ownership changed
+    updateLocalBindingsForDomainChange(domainName, null);
     alert(`Domain ${domainName} transferred to ${newOwner}`);
     closeDomainBindModalFn();
     await refreshDomainsList();
@@ -1699,8 +1905,9 @@ deleteDomainModalBtn?.addEventListener('click', async () => {
   const domainName = currentEditingDomain.domain;
   if (!confirm(`Permanently delete domain ${domainName}? This cannot be undone.`)) return;
   
-  try {
+try {
     await registryClient.deleteDomain(domainName);
+    updateLocalBindingsForDomainChange(domainName, null);
     alert(`Domain ${domainName} deleted`);
     closeDomainBindModalFn();
     await refreshDomainsList();
@@ -1899,6 +2106,8 @@ if (!storedStorageApiKey && DEFAULT_STORAGE_API_KEY) {
 registryClient = new RegistryClient(registryUrlInput.value || DEFAULT_REGISTRY_URL, {
   apiKey: storedRegistryApiKey
 });
+// Reconcile local app domain badges with live registry data on load
+reconcilePublishedAppsWithRegistry().catch(() => {});
 const chunkCache = new Map();
 const manifestReplicationState = new Map();
 const rawStorageServiceUrl = loadStorageServiceUrl();
@@ -2308,11 +2517,12 @@ async function attemptAutoConnect() {
     
     console.log('[Panel] Connecting to signaling server...');
     await connectionManager.connect();
-    console.log('[Panel] ✅ Connected successfully');
+console.log('[Panel] ✅ Connected successfully');
     if (connectionManager.updateRelayMode) {
       await connectionManager.updateRelayMode();
     }
     setSidebarStatus(connectionManager.getRelayMode?.() === 'relay' ? 'relay' : 'peer');
+    updateNetworkHealthStrip();
     telemetry.setContext('signalingUrl', url);
     telemetry.emit('connection.attempt', {
       role: 'panel',
@@ -2410,6 +2620,12 @@ chrome.runtime.onMessage.addListener((message) => {
     });
   }
 });
+
+// Periodically refresh dashboard metrics and network health
+setInterval(() => {
+  refreshDashboardMetrics();
+  updateNetworkHealthStrip();
+}, 30000);
 
 registryUrlInput.addEventListener('change', () => {
   registryClient.setBaseUrl(registryUrlInput.value.trim());
@@ -2903,9 +3119,30 @@ async function handleTextMessage(raw) {
 
     case 'chunk-upload-ack': {
       if (typeof message.chunkIndex === 'number') {
+        // Handle peer ACK for chunk upload
+        const manifestId = message.manifestId ?? message.transferId ?? currentManifest?.transferId;
+        if (manifestId && currentManifest && manifestId === currentManifest.transferId) {
+          const peer = replicationState.peers.find((p) => p.peerId === message.peerId);
+          if (peer && peer.status === 'pending') {
+            peer.status = 'acked';
+            replicationState.acks += 1;
+            appendChannelLog(`✓ Peer ${message.peerId?.slice(0,8)} ACKed chunk ${message.chunkIndex}`);
+            updateReplicationDisplay();
+            
+            // Notify registry
+            try {
+              registryClient.updateChunkReplica(manifestId, {
+                peerId: message.peerId,
+                chunkIndexes: [message.chunkIndex]
+              }).catch(err => {
+                console.warn('[Registry] Replica update failed:', err);
+              });
+            } catch {}
+          }
+        }
+        
         replicationManager.handleAck({
-          manifestId:
-            message.manifestId ?? message.transferId ?? incomingTransfer?.manifest?.transferId ?? null,
+          manifestId,
           peerId: message.peerId ?? null,
           chunkIndex: message.chunkIndex
         });
@@ -4532,42 +4769,20 @@ async function registerManifestWithRegistry(manifest, transferOverride = null) {
     const chunkData = [];
     const chunkReplicas = [];
     const chunkPointers = [];
-    const storeInline = shouldStoreChunkDataInRegistry();
-    const uploadToStorage = shouldUploadChunksToStorage();
+    // Pure P2P mode: never store inline data, never upload to storage
+    const storeInline = false;
+    const uploadToStorage = false;
     if (transfer) {
       for (let i = 0; i < transfer.totalChunks; i += 1) {
         const base64Chunk = transfer.getChunkBase64(i);
         
-        // Debug: Check what getChunkBase64 actually returns
-        if (i === 0) {
-          console.log('[chunk debug]', {
-            index: i,
-            type: typeof base64Chunk,
-            isNull: base64Chunk === null,
-            isString: typeof base64Chunk === 'string',
-            sample: base64Chunk ? base64Chunk.slice(0, 20) : null
-          });
-        }
+        // Pure P2P: always null for chunkData (no inline VPS storage)
+        chunkData.push(null);
+        chunkPointers.push(null);
 
-        if (storeInline && base64Chunk) {
-          chunkData.push(base64Chunk);
-        } else {
-          chunkData.push(null);
-        }
-
-        if (uploadToStorage && base64Chunk) {
-          try {
-            await uploadChunkToStorage(manifest.transferId, i, base64Chunk);
-            chunkPointers.push(`${storageServiceUrl}/chunks/${manifest.transferId}/${i}`);
-          } catch (error) {
-            appendRegistryLog(`Storage upload failed for chunk ${i}: ${error.message}`);
-            chunkPointers.push(null);
-          }
-        } else {
-          chunkPointers.push(null);
-        }
-
+        // Cache locally in extension for serving to peers
         cacheChunk(manifest.transferId, i, base64Chunk);
+        // Initially only local peer has the chunk
         chunkReplicas.push([localPeerId]);
       }
     } else {
@@ -4590,18 +4805,17 @@ async function registerManifestWithRegistry(manifest, transferOverride = null) {
     
     const payload = {
       ...manifest,
-      chunkData: validatedChunkData,
+      chunkData,
       chunkReplicas,
       chunkPointers,
       replicas: [localPeerId, ...(incomingTransfer?.manifest?.replicas ?? [])]
     };
     
-    console.log('[registerManifest] Payload:', {
+    console.log('[registerManifest] Pure P2P payload:', {
       transferId: payload.transferId,
       chunkDataLength: payload.chunkData?.length,
-      chunkDataSample: payload.chunkData?.slice(0, 2),
-      chunkDataTypes: payload.chunkData?.map(c => c === null ? 'null' : typeof c),
-      invalidCount: payload.chunkData?.filter(c => c !== null && typeof c !== 'string').length
+      allNull: payload.chunkData?.every(c => c === null),
+      chunkReplicasLength: payload.chunkReplicas?.length
     });
     
     const record = await registryClient.registerManifest(payload);
@@ -4613,7 +4827,7 @@ async function registerManifestWithRegistry(manifest, transferOverride = null) {
     resetManifestReplicationState(record);
     const quorum = getEffectiveAckQuorum();
     appendRegistryLog(
-      `Awaiting remote replicas: need ${quorum} confirmation${quorum === 1 ? '' : 's'} before binding domain.`
+      `Pure P2P mode: need at least ${quorum} peer replica${quorum === 1 ? '' : 's'} before binding domain.`
     );
     appendRegistryLog(`Manifest registered: ${record.manifestId ?? record.transferId}`);
     replicationManager.scheduleReplication(record, transfer);

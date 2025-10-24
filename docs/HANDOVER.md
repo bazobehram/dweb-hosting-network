@@ -94,6 +94,47 @@ Key tasks (in progress):
 - “Kullanıcı kendi sunucusunu eklesin” ve “tam federasyon” gelecek aşamaların vizyonu olarak kaydedilmiştir (şimdilik kapsam dışı).
 
 ## Upcoming Phases
+
+## Next Version: P2P Core (peer-only)
+
+Amaç: Tüm veri akışını eşlere (peers) taşımak; VPS sadece hızlandırıcı/bridge olarak kalsın. Domain ve manifest kayıtları imzalı/dağıtık bir modele evrilecek; registry yazma yolu kapatılıp salt-okuma cache/bridge rolüne indirgenecek.
+
+Branching
+- [ ] Mevcut yapı yedek dal: `feat/cloud-gateway-and-fallback`
+- [ ] Yeni geliştirme dalı: `feat/p2p-core-peer-only`
+
+Sprint 1 — Tam P2P preset + peer‑only resolver
+- [ ] Panel’e “Tam P2P modu” preset ekle (varsayılan yap):
+  - [ ] Registry inline chunk copy = kapalı
+  - [ ] Storage fallback = kapalı
+  - [ ] Gateway fallback = kapalı (PAC devre dışı / sadece peer akışı)
+- [ ] Resolver’da peer-only modu uygula; peer yoksa açık hata döndür.
+- [ ] Panel “Peer-only nasıl test edilir?” mini rehberi ekle.
+
+Sprint 2 — İmzalı domain/manifest (CRDT taslak)
+- [ ] Kayıt formatı: `{ domain, manifestId, owner, ts, signature }`
+- [ ] İmzalama/doğrulama: panelde anahtar yönetimi + imza; resolver’da doğrulama
+- [ ] Gossip/CRDT senkronizasyon modülü (delta/append‑only)
+- [ ] Registry’yi salt‑okunur cache/bridge moduna çekme (yazma P2P)
+
+Sprint 3 — Peer discovery & seeding
+- [ ] Çoklu tracker desteği + manuel seed ekleme
+- [ ] WebRTC-DHT/announce mekanizması
+- [ ] Replikasyon/seeding politikası ve saygınlık puanı taslağı
+
+Sprint 4 — Geçiş ve doğrulama
+- [ ] Panel/Resolver okuma yolunu CRDT’ten besle
+- [ ] P2P‑only demo (peers>0 iken içerik eşlerden; peers=0 iken beklenen hata)
+- [ ] Registry/Storage, opsiyonel hızlandırıcı olarak seçilebilir olsun
+
+Gözlemlenebilirlik (lokal)
+- [ ] Pano metriklerini (Direct, TTFB, Replication) backend’siz lokal istatistiklerle doldur
+- [ ] Resolver/Panel event’lerini minimal boyutta `chrome.storage.local` altında topla
+
+Çıktı Kriterleri
+- [ ] `example.dweb` içerikleri peers üzerinden geliyor; merkezi veri akışı yok
+- [ ] Domain/manifest okuma P2P CRDT’ten; registry sadece cache/bridge
+- [ ] Kullanıcı için “Tam P2P” varsayılan ve dokümante
 - **Phase 2:** Persistent storage (MinIO/S3 integration), registry DB hardening, pointer management automation.
 - **Phase 3:** Security enhancements (auth tokens, signature checks, granular rate limits/quota tracking).
 - **Phase 4:** UX/tooling (replication dashboard, resolver diagnostics, CLI helpers).

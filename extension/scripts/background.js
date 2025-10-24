@@ -6,7 +6,7 @@ import { RegistryClient } from './api/registryClient.js';
 
 const peerChunkQueue = [];
 const pendingChunkResponses = new Map();
-const REQUEST_TIMEOUT = 2000;
+const REQUEST_TIMEOUT = 10000; // 10s for peer connection + chunk fetch
 
 // Background peer service state
 let backgroundPeerEnabled = false;
@@ -36,34 +36,57 @@ chrome.runtime.onStartup.addListener(() => {
   console.log('[DWeb] Extension startup (background peer disabled)');
 });
 
-// Intercept .dweb navigation and redirect to resolver
-chrome.webNavigation.onBeforeNavigate.addListener(
-  (details) => {
-    if (details.frameId !== 0) return; // Only main frame
-    
-    try {
-      const url = new URL(details.url);
-      const hostname = url.hostname.toLowerCase();
-      
-      // Check if it's a .dweb domain
-      if (hostname.endsWith('.dweb')) {
-        console.log('[DWeb] Intercepting navigation to:', hostname);
-        
-        // Redirect to resolver with domain parameter
-        const resolverUrl = chrome.runtime.getURL(`resolver/index.html?domain=${encodeURIComponent(hostname)}`);
-        
-        chrome.tabs.update(details.tabId, { url: resolverUrl }, () => {
-          if (chrome.runtime.lastError) {
-            console.error('[DWeb] Failed to redirect:', chrome.runtime.lastError);
-          }
-        });
-      }
-    } catch (error) {
-      console.error('[DWeb] Navigation interception error:', error);
+// PAC-based native browsing for *.dweb
+const PAC_ENABLED = true;
+if (PAC_ENABLED) {
+  const pacData = `function FindProxyForURL(url, host) {
+    if (shExpMatch(host, '*.dweb') || dnsDomainIs(host, '.dweb')) {
+      return 'PROXY 127.0.0.1:8790; PROXY 34.107.74.70:8790; DIRECT';
     }
-  },
-  { url: [{ hostSuffix: '.dweb' }] }
-);
+    return 'DIRECT';
+  }`;
+  try {
+    chrome.proxy.settings.set(
+      { value: { mode: 'pac_script', pacScript: { data: pacData } }, scope: 'regular' },
+      () => {}
+    );
+  } catch (e) {
+    // ignore
+  }
+} else {
+  // Intercept .dweb navigation: try local gateway (native) then fallback to viewer
+  const gatewayHttpsOrigin = 'https://34-107-74-70.sslip.io';
+  chrome.webNavigation.onBeforeNavigate.addListener(
+    (details) => {
+      if (details.frameId !== 0) return; // Only main frame
+      try {
+        const url = new URL(details.url);
+        const hostname = url.hostname.toLowerCase();
+        if (!hostname.endsWith('.dweb')) return;
+        const target = `${gatewayHttpsOrigin}/?domain=${encodeURIComponent(hostname)}`;
+        chrome.tabs.update(details.tabId, { url: target });
+      } catch {}
+    },
+    { url: [{ hostSuffix: '.dweb' }] }
+  );
+}
+
+// Omnibox: type "dweb example" to open
+chrome.omnibox?.onInputEntered.addListener((text, disposition) => {
+  if (!text) return;
+  const name = String(text).trim().replace(/\s+/g, '-').replace(/\.dweb$/i, '');
+  const domain = `${name}.dweb`;
+  const open = (url) => {
+    if (disposition === 'currentTab') chrome.tabs.update({ url });
+    else if (disposition === 'newForegroundTab') chrome.tabs.create({ url, active: true });
+    else chrome.tabs.create({ url, active: false });
+  };
+  if (PAC_ENABLED) {
+    open(`http://${domain}/`);
+  } else {
+    open(`https://34-107-74-70.sslip.io/?domain=${encodeURIComponent(domain)}`);
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') {

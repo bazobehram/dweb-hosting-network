@@ -171,22 +171,29 @@
       <div class="panel-content">
         <header class="topbar">
           <div class="metric-cards">
-            <div class="metric-card">
+            <div class="metric-card" title="Share of requests served directly by peers in last 24h">
               <p class="metric-title">Direct Sessions</p>
               <p id="metricDirectRate" class="metric-value">—</p>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" title="Median time-to-first-byte from peers or storage">
               <p class="metric-title">Median TTFB</p>
               <p id="metricTtfb" class="metric-value">—</p>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" title="Successful replica uploads in last 24h">
               <p class="metric-title">Replication Success</p>
               <p id="metricReplication" class="metric-value">—</p>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" title="Last end-to-end availability check">
               <p class="metric-title">Last E2E Run</p>
               <p id="metricE2ERun" class="metric-value">—</p>
             </div>
+          </div>
+          <div class="network-health-strip" id="networkHealthStrip">
+            <span class="pill" id="nhMode">Mode: —</span>
+            <span class="pill" id="nhPeers">Peers: 0</span>
+            <span class="pill" id="nhSignaling">Signaling: —</span>
+            <span class="pill" id="nhRegistry">Registry: —</span>
+            <span class="pill" id="nhStorage">Storage: —</span>
           </div>
         </header>
 
