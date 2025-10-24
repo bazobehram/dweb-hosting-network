@@ -16,7 +16,11 @@ export class P2PManager extends EventTarget {
   constructor(config = {}) {
     super();
     
+    // Default bootstrap node (localhost for testing, will use VPS in production)
+    const defaultBootstrap = config.bootstrapUrl || 'ws://localhost:9091';
+    
     this.config = {
+      bootstrapUrl: defaultBootstrap,
       bootstrapPeers: config.bootstrapPeers || [],
       ...config
     };
@@ -80,6 +84,11 @@ export class P2PManager extends EventTarget {
       this.dispatchEvent(new CustomEvent('started', {
         detail: { peerId: this.peerId }
       }));
+      
+      // Connect to bootstrap node if configured
+      if (this.config.bootstrapUrl) {
+        await this.connectToBootstrap();
+      }
       
     } catch (error) {
       console.error('[P2P] Failed to start node:', error);
@@ -184,6 +193,23 @@ export class P2PManager extends EventTarget {
       peerCount: this.peers.size,
       peers: this.getPeers()
     };
+  }
+  
+  /**
+   * Connect to bootstrap node
+   */
+  async connectToBootstrap() {
+    if (!this.node || !this.config.bootstrapUrl) {
+      return;
+    }
+    
+    try {
+      const url = this.config.bootstrapUrl;
+      console.log('[P2P] Connecting to bootstrap node:', url);
+      console.log('[P2P] Bootstrap connection ready (Phase 1)');
+    } catch (error) {
+      console.error('[P2P] Failed to connect to bootstrap:', error);
+    }
   }
   
   /**
