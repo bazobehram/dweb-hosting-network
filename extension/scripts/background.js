@@ -128,9 +128,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       },
       () => {
         if (chrome.runtime.lastError) {
+          console.warn('[SW] Failed to dispatch chunk request:', chrome.runtime.lastError.message);
           const responder = pendingChunkResponses.get(requestId);
           if (responder) {
-            responder({ status: 'unavailable' });
+            responder({ status: 'unavailable', reason: 'no-panel-listener' });
             pendingChunkResponses.delete(requestId);
           }
         }

@@ -26,7 +26,7 @@ const ENV_CONFIG = {
   }
 };
 
-const currentEnv = window.localStorage.getItem('dweb-environment') || 'production';
+const currentEnv = window.localStorage.getItem('dweb-environment') || 'local';
 const config = ENV_CONFIG[currentEnv];
 
 const REGISTRY_API_KEY_STORAGE_KEY = "dweb-registry-api-key";

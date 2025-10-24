@@ -96,13 +96,17 @@ const ENV_CONFIG = {
   }
 };
 
-let currentEnv = window.localStorage.getItem(ENV_TOGGLE_STORAGE_KEY) || 'production';
+let currentEnv = window.localStorage.getItem(ENV_TOGGLE_STORAGE_KEY) || 'local';
 
 let telemetry = null;
 let registryClient = null;
 let chunkManager = null;
 let connectionManager = null;
 let localPeerId = null;
+
+// Expose for debugging
+window.debugConnectionManager = () => connectionManager;
+window.debugIsChannelReady = () => connectionManager?.isChannelReady?.() ?? false;
 let peers = [];
 let outgoingTransfer = null;
 let incomingTransfer = null;
@@ -459,6 +463,14 @@ async function updateNetworkHealthStrip() {
   const mode = sidebarStatusBadge?.textContent || 'Unknown';
   set('nhMode', `Mode: ${mode}`);
   set('nhPeers', `Peers: ${peers?.length ?? 0}`);
+  
+  // Data channel status
+  const channelReady = connectionManager?.isChannelReady?.() ?? false;
+  if (channelReady) {
+    set('nhChannel', 'Channel: Open', 'ok');
+  } else {
+    set('nhChannel', 'Channel: Closed');
+  }
 
   // Signaling: treat as OK when we have a connection manager instance
   if (connectionManager) set('nhSignaling', 'Signaling: OK', 'ok'); else set('nhSignaling', 'Signaling: —');
@@ -1479,8 +1491,8 @@ publishNewAppBtn?.addEventListener('click', () => {
   // Check and show connection status
   const connectionBanner = document.getElementById('publishConnectionStatus');
   if (connectionBanner) {
-    const hasPeers = connectionManager && peers && peers.length > 0;
-    if (!hasPeers) {
+    const hasChannel = connectionManager?.isChannelReady?.() ?? false;
+    if (!hasChannel) {
       connectionBanner.classList.remove('hidden');
     } else {
       connectionBanner.classList.add('hidden');
@@ -1572,31 +1584,35 @@ startPublishBtn?.addEventListener('click', async () => {
     document.getElementById('progressText2').textContent = 'Replicating to network...';
     
     // Try to replicate to peers if connected
-    const hasPeers = connectionManager && peers && peers.length > 0;
-    if (hasPeers) {
-      const targetPeers = peers.slice(0, 3);
-      for (const peer of targetPeers) {
+    const hasChannel = connectionManager?.isChannelReady?.() ?? false;
+    if (hasChannel) {
+      console.log('[Publish] Sending chunks to peer via data channel');
+      // Send chunks directly via data channel
+      for (let i = 0; i < transfer.totalChunks; i++) {
         try {
           connectionManager.sendJson({
-            type: 'replication-request',
+            type: 'chunk-upload',
             manifestId: manifest.transferId,
-            manifest,
-            timestamp: Date.now()
-          }, peer.peerId);
+            chunkIndex: i,
+            data: transfer.getChunkBase64(i),
+            hash: transfer.getChunkHash(i)
+          });
+          console.log(`[Publish] Sent chunk ${i}/${transfer.totalChunks}`);
         } catch (err) {
-          console.warn(`Failed to send to peer ${peer.peerId}:`, err);
+          console.error(`[Publish] Failed to send chunk ${i}:`, err);
         }
       }
-      currentPublishManifest.peerCount = targetPeers.length;
-      document.getElementById('progressPeers').textContent = `${targetPeers.length}/3 peers`;
+      currentPublishManifest.peerCount = 1; // Connected to 1 peer
+      document.getElementById('progressPeers').textContent = `1/3 peers`;
     } else {
+      console.warn('[Publish] No data channel, skipping peer replication');
       document.getElementById('progressPeers').textContent = '0 peers (no connections)';
     }
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    document.getElementById('progressIcon2').textContent = hasPeers ? '✓' : '⚠️';
-    document.getElementById('progressText2').textContent = hasPeers ? 'Replicated' : 'No peers connected';
+    document.getElementById('progressIcon2').textContent = hasChannel ? '✓' : '⚠️';
+    document.getElementById('progressText2').textContent = hasChannel ? 'Replicated' : 'No peers connected';
     
     document.getElementById('progressIcon3').textContent = '⏳';
     document.getElementById('progressText3').textContent = 'Registering manifest...';
@@ -1717,10 +1733,22 @@ await registryClient.updateDomainBinding(domainName, { manifestId: currentPublis
     }
     
     // Register and bind to current manifest
+    // Fetch manifest to get replicas
+    let replicas = [];
+    try {
+      const manifest = await registryClient.getManifest(currentPublishManifest.manifestId);
+      if (manifest && Array.isArray(manifest.replicas)) {
+        replicas = manifest.replicas;
+      }
+    } catch (err) {
+      console.warn('[Domain] Could not fetch manifest replicas:', err);
+    }
+    
     const payload = {
       domain: domainName,
       owner: authState.ownerId,
       manifestId: currentPublishManifest.manifestId,
+      replicas,
       timestamp: Date.now()
     };
     
@@ -1810,10 +1838,22 @@ createBindingBtn?.addEventListener('click', async () => {
       }
     } else {
       // Register new domain
+      // Fetch manifest to get replicas
+      let replicas = [];
+      try {
+        const manifest = await registryClient.getManifest(manifestId);
+        if (manifest && Array.isArray(manifest.replicas)) {
+          replicas = manifest.replicas;
+        }
+      } catch (err) {
+        console.warn('[Domain] Could not fetch manifest replicas:', err);
+      }
+      
       const payload = {
         domain: domainName,
         owner: authState.ownerId,
         manifestId,
+        replicas,
         timestamp: Date.now()
       };
       
@@ -2648,10 +2688,12 @@ storageFallbackToggle?.addEventListener('change', handleStorageFallbackToggle);
 
 chrome.runtime.onMessage.addListener((message) => {
   if (!message || typeof message !== 'object') {
-    return;
+    return false;
   }
   if (message.type === 'peer-chunk-request-dispatch') {
+    console.log('[Panel] Received peer-chunk-request-dispatch:', message);
     handlePeerChunkDispatch(message).catch((error) => {
+      console.error('[Panel] handlePeerChunkDispatch error:', error);
       chrome.runtime.sendMessage({
         type: 'peer-chunk-response',
         requestId: message.requestId,
@@ -2659,7 +2701,9 @@ chrome.runtime.onMessage.addListener((message) => {
         reason: error.message
       });
     });
+    return true; // Required for async message handling
   }
+  return false;
 });
 
 // Periodically refresh dashboard metrics and network health
@@ -2934,8 +2978,46 @@ function registerManagerEvents(manager) {
       successRate: payload.metadata?.successRate ?? null
     });
     appendLog(`Registered as ${payload.peerId}`);
+    
+    // Debug: check peers in payload
+    console.log('[registered] payload.peers:', payload.peers);
+    
     updatePeerList(payload.peers ?? []);
     manager.requestPeerList();
+    
+    // Auto-connect to first available peer with glare avoidance
+    const availablePeers = payload.peers ?? [];
+    console.log('[registered] availablePeers:', availablePeers);
+    console.log('[registered] availablePeers.length:', availablePeers.length);
+    if (availablePeers.length > 0) {
+      const targetPeer = availablePeers[0];
+      console.log('[registered] targetPeer:', targetPeer);
+      console.log('[registered] targetPeer.peerId:', targetPeer?.peerId);
+      if (targetPeer && targetPeer.peerId) {
+        // Deterministic initiator: smaller peerId initiates
+        const shouldInitiate = String(localPeerId) < String(targetPeer.peerId);
+        if (shouldInitiate) {
+          console.log('[Auto-connect] Scheduling connection to:', targetPeer.peerId);
+          // Wait a bit for signaling to be fully ready
+          setTimeout(() => {
+            console.log('[Auto-connect] Initiating connection to:', targetPeer.peerId);
+            appendLog(`Auto-connecting to peer ${targetPeer.peerId}...`);
+            manager.initiateConnection(targetPeer.peerId).catch(err => {
+              console.error('[Auto-connect] Failed:', err);
+              appendLog(`Auto-connect failed: ${err.message}`);
+            });
+          }, 150);
+        } else {
+          appendLog(`Awaiting incoming connection from ${targetPeer.peerId} (glare avoidance)`);
+        }
+      } else {
+        console.warn('[Auto-connect] Target peer has no peerId');
+        appendLog('[Auto-connect] Target peer has no peerId');
+      }
+    } else {
+      appendLog('[Auto-connect] No peers available at registration');
+    }
+    
     // Refresh dashboard when registered (we now have peer list)
     refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh on register failed:', err));
   });
@@ -2968,6 +3050,20 @@ function registerManagerEvents(manager) {
         latencyMs: message.metadata?.latencyMs ?? null,
         successRate: message.metadata?.successRate ?? null
       });
+      
+      // Auto-connect to new peer if no channel open (glare avoidance)
+      if (!manager.isChannelReady?.()) {
+        const shouldInitiate = String(localPeerId) < String(message.peerId);
+        if (shouldInitiate) {
+          appendLog(`Auto-connecting to new peer ${message.peerId}...`);
+          manager.initiateConnection(message.peerId).catch(err => {
+            appendLog(`Auto-connect to ${message.peerId} failed: ${err.message}`);
+          });
+        } else {
+          appendLog(`Peer ${message.peerId} joined; waiting for incoming connection (glare avoidance)`);
+        }
+      }
+      
       // Update dashboard in real-time
       refreshDashboardOverview().catch(err => console.warn('[Dashboard] Refresh failed:', err));
       return;
@@ -3009,7 +3105,9 @@ function registerManagerEvents(manager) {
 
   manager.addEventListener('connectionstatechange', (event) => {
     appendLog(`Connection state: ${event.detail}`);
-    channelStatus.textContent = `Connection: ${event.detail}`;
+    if (channelStatus) {
+      channelStatus.textContent = `Connection: ${event.detail}`;
+    }
   });
 
   manager.addEventListener('icegatheringstatechange', (event) => {
@@ -3032,18 +3130,22 @@ function registerManagerEvents(manager) {
 
   manager.addEventListener('icefailure', () => {
     appendChannelLog('ICE negotiation failed; resetting peer connection.');
-    channelStatus.textContent = 'Channel unavailable (ICE failure)';
+    if (channelStatus) {
+      channelStatus.textContent = 'Channel unavailable (ICE failure)';
+    }
     replicationManager.handleChannelClosed(connectionManager?.targetPeerId ?? null);
     connectionManager?.resetPeerConnection();
   });
 
   manager.addEventListener('channel-open', () => {
-    channelStatus.textContent = 'Channel open';
-    sendMessageBtn.disabled = false;
-    messageInput.disabled = false;
-    sendFileBtn.disabled = false;
-    fileInput.disabled = false;
-    messageInput.focus();
+    if (channelStatus) channelStatus.textContent = 'Channel open';
+    if (sendMessageBtn) sendMessageBtn.disabled = false;
+    if (messageInput) {
+      messageInput.disabled = false;
+      messageInput.focus();
+    }
+    if (sendFileBtn) sendFileBtn.disabled = false;
+    if (fileInput) fileInput.disabled = false;
     appendChannelLog('Data channel opened.');
     replicationManager.handleChannelOpen();
     // Update dashboard when channel opens
@@ -3051,15 +3153,17 @@ function registerManagerEvents(manager) {
   });
 
   manager.addEventListener('channel-close', () => {
-    channelStatus.textContent = 'Channel closed';
-    sendMessageBtn.disabled = true;
-    sendFileBtn.disabled = true;
-    fileInput.disabled = true;
-    messageInput.disabled = true;
-    messageInput.value = '';
+    if (channelStatus) channelStatus.textContent = 'Channel closed';
+    if (sendMessageBtn) sendMessageBtn.disabled = true;
+    if (sendFileBtn) sendFileBtn.disabled = true;
+    if (fileInput) fileInput.disabled = true;
+    if (messageInput) {
+      messageInput.disabled = true;
+      messageInput.value = '';
+    }
     outgoingTransfer = null;
     incomingTransfer = null;
-    registerDomainBtn.disabled = true;
+    if (registerDomainBtn) registerDomainBtn.disabled = true;
     lastManifestRecord = null;
     appendChannelLog('Data channel closed.');
     refreshRegisterButtonState();
@@ -3157,6 +3261,17 @@ async function handleTextMessage(raw) {
         appendChannelLog(`Peer reported error for request ${message.requestId}: ${message.reason ?? 'unknown'}`);
       }
       break;
+
+    case 'chunk-upload': {
+      console.log('[chunk-upload] Received:', message);
+      handleChunkUpload(message).then(() => {
+        appendChannelLog(`Stored chunk ${message.chunkIndex} for ${message.manifestId}`);
+      }).catch(err => {
+        console.error('[chunk-upload] Error:', err);
+        appendChannelLog(`Failed to store chunk ${message.chunkIndex}: ${err.message}`);
+      });
+      break;
+    }
 
     case 'chunk-upload-ack': {
       if (typeof message.chunkIndex === 'number') {
@@ -3261,7 +3376,7 @@ async function handleBinaryPayload(buffer) {
   }
 }
 
-function handlePeerChunkDispatch({ requestId, manifestId, chunkIndex, replicas }) {
+async function handlePeerChunkDispatch({ requestId, manifestId, chunkIndex, replicas }) {
   if (!connectionManager || !connectionManager.isChannelReady()) {
     chrome.runtime.sendMessage({
       type: 'peer-chunk-response',
@@ -3287,6 +3402,7 @@ function handlePeerChunkDispatch({ requestId, manifestId, chunkIndex, replicas }
       status: 'error',
       reason: error.message
     });
+    throw error;
   }
 }
 
@@ -4585,18 +4701,21 @@ function formatIceCandidateError(detail) {
 }
 
 function appendLog(text) {
+  if (!statusLog) return;
   const time = new Date().toLocaleTimeString();
   statusLog.textContent += `[${time}] ${text}\n`;
   statusLog.scrollTop = statusLog.scrollHeight;
 }
 
 function appendChannelLog(text) {
+  if (!channelLog) return;
   const time = new Date().toLocaleTimeString();
   channelLog.textContent += `[${time}] ${text}\n`;
   channelLog.scrollTop = channelLog.scrollHeight;
 }
 
 function appendRegistryLog(text) {
+  if (!registryLog) return;
   const time = new Date().toLocaleTimeString();
   registryLog.textContent += `[${time}] ${text}\n`;
   registryLog.scrollTop = registryLog.scrollHeight;
