@@ -11,16 +11,21 @@ import { bootstrap } from '@libp2p/bootstrap';
 import { noise } from '@chainsafe/libp2p-noise';
 import { mplex } from '@libp2p/mplex';
 import { identify } from '@libp2p/identify';
+import { circuitRelayTransport } from '@libp2p/circuit-relay-v2';
+import { peerIdFromString } from '@libp2p/peer-id';
+import * as MultiaddrModule from '@multiformats/multiaddr';
 
 export class P2PManager extends EventTarget {
   constructor(config = {}) {
     super();
     
-    // Default bootstrap node (localhost for testing, will use VPS in production)
-    const defaultBootstrap = config.bootstrapUrl || 'ws://localhost:9091';
+    // Default bootstrap node multiaddr (must include peer ID)
+    // Format: /dns4/host/tcp/port/ws/p2p/peer-id
+    // For testing: get peer ID from bootstrap node console output
+    const defaultBootstrap = config.bootstrapMultiaddr || null;
     
     this.config = {
-      bootstrapUrl: defaultBootstrap,
+      bootstrapMultiaddr: defaultBootstrap,
       bootstrapPeers: config.bootstrapPeers || [],
       ...config
     };
@@ -44,14 +49,19 @@ export class P2PManager extends EventTarget {
       console.log('[P2P] Starting libp2p node...');
       
       // Create libp2p node with browser-compatible transports
-      // Note: WebRTC disabled in Faz 0 (will be enabled in Faz 1 with bootstrap)
+      // Phase 1: WebRTC enabled with circuit relay support
       this.node = await createLibp2p({
         addresses: {
           listen: []
         },
         transports: [
-          // webRTC(), // Disabled - requires circuit-relay setup
-          webSockets()
+          webRTC(),
+          webSockets({
+            filter: () => true // Accept all WebSocket addresses
+          }),
+          circuitRelayTransport({
+            discoverRelays: 1
+          })
         ],
         connectionEncryption: [noise()],
         streamMuxers: [mplex()],
@@ -86,7 +96,7 @@ export class P2PManager extends EventTarget {
       }));
       
       // Connect to bootstrap node if configured
-      if (this.config.bootstrapUrl) {
+      if (this.config.bootstrapMultiaddr) {
         await this.connectToBootstrap();
       }
       
@@ -197,18 +207,45 @@ export class P2PManager extends EventTarget {
   
   /**
    * Connect to bootstrap node
+   * @param {string} multiaddr - Full multiaddr with peer ID (e.g., /dns4/localhost/tcp/9091/ws/p2p/12D3Koo...)
    */
-  async connectToBootstrap() {
-    if (!this.node || !this.config.bootstrapUrl) {
+  async connectToBootstrap(multiaddr = null) {
+    if (!this.node) {
+      return;
+    }
+    
+    const addr = multiaddr || this.config.bootstrapMultiaddr;
+    if (!addr) {
+      console.warn('[P2P] No bootstrap multiaddr configured');
       return;
     }
     
     try {
-      const url = this.config.bootstrapUrl;
-      console.log('[P2P] Connecting to bootstrap node:', url);
-      console.log('[P2P] Bootstrap connection ready (Phase 1)');
+      console.log('[P2P] Connecting to bootstrap node:', addr);
+      
+      // Parse the full multiaddr (including peer ID)
+      const ma = MultiaddrModule.multiaddr(addr);
+      
+      console.log('[P2P] Dialing multiaddr directly:', addr);
+      
+      // Dial using the full multiaddr directly
+      // This should work better than extracting peer ID separately
+      const connection = await this.node.dial(ma);
+      console.log('[P2P] ✓ Connected to bootstrap node!');
+      console.log('[P2P] Bootstrap peer ID:', connection.remotePeer.toString());
+      
+      this.dispatchEvent(new CustomEvent('bootstrap:connected', {
+        detail: { 
+          peerId: connection.remotePeer.toString(),
+          multiaddr: addr
+        }
+      }));
+      
     } catch (error) {
       console.error('[P2P] Failed to connect to bootstrap:', error);
+      this.dispatchEvent(new CustomEvent('bootstrap:error', {
+        detail: { error: error.message }
+      }));
     }
   }
   

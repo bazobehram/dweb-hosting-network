@@ -11,12 +11,12 @@ let p2pManager = null;
 console.log('[Faz 0] libp2p test module loaded');
 
 // Expose test functions to window for console debugging
-window.testLibp2pStart = async () => {
+window.testLibp2pStart = async (bootstrapMultiaddr = null) => {
   try {
-    console.log('[Faz 0] Starting libp2p test...');
+    console.log('[Phase 1] Starting libp2p test...');
     
     p2pManager = new P2PManager({
-      bootstrapPeers: [] // No bootstrap peers yet (Faz 1)
+      bootstrapMultiaddr: bootstrapMultiaddr // Pass bootstrap node multiaddr
     });
     
     // Listen to events
@@ -32,7 +32,19 @@ window.testLibp2pStart = async () => {
     });
     
     p2pManager.addEventListener('peer:connected', (event) => {
-      console.log('[Faz 0] Peer connected:', event.detail.peerId);
+      console.log('[Phase 1] Peer connected:', event.detail.peerId);
+      alert(`Peer connected: ${event.detail.peerId}`);
+    });
+    
+    p2pManager.addEventListener('bootstrap:connected', (event) => {
+      console.log('[Phase 1] Bootstrap connected:', event.detail.peerId);
+      console.log('[Phase 1] Multiaddr:', event.detail.multiaddr);
+      alert(`Bootstrap connected!\nPeer ID: ${event.detail.peerId}`);
+    });
+    
+    p2pManager.addEventListener('bootstrap:error', (event) => {
+      console.error('[Phase 1] Bootstrap error:', event.detail.error);
+      alert(`Bootstrap connection failed: ${event.detail.error}`);
     });
     
     await p2pManager.start();
@@ -75,8 +87,11 @@ window.testLibp2pStatus = () => {
 
 window.debugP2PManager = () => p2pManager;
 
-console.log('[Faz 0] Test functions ready:');
-console.log('  - testLibp2pStart()');
+console.log('[Phase 1] Test functions ready:');
+console.log('  - testLibp2pStart(bootstrapMultiaddr) - Pass full multiaddr with peer ID');
 console.log('  - testLibp2pStop()');
 console.log('  - testLibp2pStatus()');
 console.log('  - debugP2PManager()');
+console.log('');
+console.log('Example: testLibp2pStart("/dns4/localhost/tcp/9091/ws/p2p/12D3KooW...")');
+console.log('Get the multiaddr from bootstrap node console output');
