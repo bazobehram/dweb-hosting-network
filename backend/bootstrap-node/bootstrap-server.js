@@ -6,15 +6,13 @@
  */
 
 import { createLibp2p } from 'libp2p';
-import { tcp } from '@libp2p/tcp';
 import { webSockets } from '@libp2p/websockets';
 import { noise } from '@chainsafe/libp2p-noise';
 import { mplex } from '@libp2p/mplex';
 import { identify } from '@libp2p/identify';
 import { circuitRelayServer } from '@libp2p/circuit-relay-v2';
 
-const LISTEN_PORT = process.env.LIBP2P_PORT || 9090;
-const WEBSOCKET_PORT = process.env.LIBP2P_WS_PORT || 9091;
+const WEBSOCKET_PORT = process.env.LIBP2P_WS_PORT || 9092;
 
 console.log('[Bootstrap] Starting DWeb Bootstrap Node...');
 
@@ -22,12 +20,14 @@ async function main() {
   const node = await createLibp2p({
     addresses: {
       listen: [
-        `/ip4/0.0.0.0/tcp/${LISTEN_PORT}`,
         `/ip4/0.0.0.0/tcp/${WEBSOCKET_PORT}/ws`
+      ],
+      // Announce ip4 address for browser compatibility
+      announce: [
+        `/ip4/127.0.0.1/tcp/${WEBSOCKET_PORT}/ws`
       ]
     },
     transports: [
-      tcp(),
       webSockets()
     ],
     connectionEncryption: [noise()],
@@ -53,7 +53,14 @@ async function main() {
   console.log('[Bootstrap] Listening on:');
   
   node.getMultiaddrs().forEach((addr) => {
-    console.log('  -', addr.toString());
+    const s = addr.toString();
+    console.log('  -', s);
+    // Also print a localhost dns4 variant for browser testing
+    try {
+      if (s.includes('/ip4/127.0.0.1/') && s.includes('/ws/')) {
+        console.log('  -', s.replace('/ip4/127.0.0.1/', '/dns4/localhost/'));
+      }
+    } catch {}
   });
 
   // Log peer connections

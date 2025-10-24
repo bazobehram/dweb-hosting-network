@@ -10,17 +10,16 @@
     "build:test": "esbuild panel/libp2p-test.js --bundle --format=esm --outfile=dist/libp2p-test.bundle.js"
   },
   "dependencies": {
-    "@chainsafe/libp2p-noise": "^15.0.0",
-    "@libp2p/bootstrap": "^10.0.0",
-    "@libp2p/circuit-relay-v2": "^1.1.5",
-    "@libp2p/identify": "^4.0.6",
-    "@libp2p/kad-dht": "^12.0.0",
-    "@libp2p/mplex": "^10.0.0",
-    "@libp2p/peer-id": "^6.0.3",
-    "@libp2p/webrtc": "^4.0.0",
-    "@libp2p/websockets": "^8.0.0",
-    "@multiformats/multiaddr": "^13.0.1",
-    "libp2p": "^1.0.0"
+    "libp2p": "1.9.4",
+    "@libp2p/webrtc": "5.0.7",
+    "@libp2p/websockets": "9.0.10",
+    "@libp2p/bootstrap": "11.0.2",
+    "@libp2p/mplex": "11.0.5",
+    "@chainsafe/libp2p-noise": "16.0.5",
+    "@libp2p/circuit-relay-v2": "1.1.5",
+    "@libp2p/identify": "4.0.6",
+    "@libp2p/peer-id": "6.0.3",
+    "@multiformats/multiaddr": "13.0.1"
   },
   "devDependencies": {
     "esbuild": "^0.19.12"

@@ -7,6 +7,7 @@
 import { createLibp2p } from 'libp2p';
 import { webRTC } from '@libp2p/webrtc';
 import { webSockets } from '@libp2p/websockets';
+import * as filters from '@libp2p/websockets/filters';
 import { bootstrap } from '@libp2p/bootstrap';
 import { noise } from '@chainsafe/libp2p-noise';
 import { mplex } from '@libp2p/mplex';
@@ -24,9 +25,15 @@ export class P2PManager extends EventTarget {
     // For testing: get peer ID from bootstrap node console output
     const defaultBootstrap = config.bootstrapMultiaddr || null;
     
+    const normalizeAddr = (addr) => {
+      if (!addr || typeof addr !== 'string') return null;
+      // Normalize 127.0.0.1 to dns4/localhost for browser WS compat
+      return addr.replace(/^\/ip4\/127\.0\.0\.1\//, '/dns4/localhost/');
+    };
+
     this.config = {
-      bootstrapMultiaddr: defaultBootstrap,
-      bootstrapPeers: config.bootstrapPeers || [],
+      bootstrapMultiaddr: normalizeAddr(defaultBootstrap),
+      bootstrapPeers: (config.bootstrapPeers || []).map(normalizeAddr).filter(Boolean),
       ...config
     };
     
@@ -34,6 +41,7 @@ export class P2PManager extends EventTarget {
     this.peerId = null;
     this.peers = new Map(); // peerId -> peerInfo
     this.isStarted = false;
+    this.dialAttempts = new Set();
   }
   
   /**
@@ -57,7 +65,7 @@ export class P2PManager extends EventTarget {
         transports: [
           webRTC(),
           webSockets({
-            filter: () => true // Accept all WebSocket addresses
+            filter: filters.all // Accept all WebSocket addresses (including ws://)
           }),
           circuitRelayTransport({
             discoverRelays: 1
@@ -68,14 +76,24 @@ export class P2PManager extends EventTarget {
         services: {
           identify: identify()
         },
-        peerDiscovery: this.config.bootstrapPeers.length > 0 ? [
-          bootstrap({
-            list: this.config.bootstrapPeers
-          })
-        ] : [],
+        peerDiscovery: (() => {
+          const discoveries = [];
+          if (this.config.bootstrapPeers && this.config.bootstrapPeers.length > 0) {
+            discoveries.push(bootstrap({ list: this.config.bootstrapPeers }));
+          }
+          if (this.config.bootstrapMultiaddr) {
+            discoveries.push(bootstrap({ list: [this.config.bootstrapMultiaddr] }));
+          }
+          return discoveries;
+        })(),
         connectionManager: {
+          autoDial: true,
           minConnections: 0,
           maxConnections: 50
+        },
+        connectionGater: {
+          // Allow dialing private/local addresses (for development)
+          denyDialMultiaddr: async () => false
         }
       });
       
@@ -95,10 +113,7 @@ export class P2PManager extends EventTarget {
         detail: { peerId: this.peerId }
       }));
       
-      // Connect to bootstrap node if configured
-      if (this.config.bootstrapMultiaddr) {
-        await this.connectToBootstrap();
-      }
+      // Bootstrap discovery will handle connecting if configured
       
     } catch (error) {
       console.error('[P2P] Failed to start node:', error);
@@ -148,9 +163,26 @@ export class P2PManager extends EventTarget {
     if (!this.node) return;
     
     // Peer discovered
-    this.node.addEventListener('peer:discovery', (event) => {
-      const peerId = event.detail.id.toString();
+    this.node.addEventListener('peer:discovery', async (event) => {
+      const peerIdObj = event.detail.id; // PeerId object
+      const peerId = peerIdObj?.toString?.() || String(peerIdObj || 'unknown');
       console.log('[P2P] Peer discovered:', peerId);
+      console.log('[P2P] Discovered multiaddrs:', event.detail.multiaddrs?.map(ma => ma.toString()));
+
+      // Auto-dial discovered peers using PeerId (correct v1.x API)
+      try {
+        if (!this.dialAttempts.has(peerId)) {
+          this.dialAttempts.add(peerId);
+          // Dial the PeerId - libp2p will find addresses in peer store
+          await new Promise(r => setTimeout(r, 100));
+          console.log('[P2P] Auto-dialing peer:', peerId);
+          this.node.dial(peerIdObj).catch(err => {
+            console.log('[P2P] Auto-dial failed for', peerId, ':', err.message);
+          });
+        }
+      } catch (err) {
+        console.log('[P2P] Auto-dial exception:', err.message);
+      }
       
       this.dispatchEvent(new CustomEvent('peer:discovered', {
         detail: { peerId }
@@ -205,47 +237,62 @@ export class P2PManager extends EventTarget {
     };
   }
   
-  /**
-   * Connect to bootstrap node
-   * @param {string} multiaddr - Full multiaddr with peer ID (e.g., /dns4/localhost/tcp/9091/ws/p2p/12D3Koo...)
-   */
-  async connectToBootstrap(multiaddr = null) {
-    if (!this.node) {
-      return;
-    }
-    
-    const addr = multiaddr || this.config.bootstrapMultiaddr;
+  // Dial bootstrap node using PeerId from peer store (correct libp2p v1.x API)
+  async connectToBootstrap(_multiaddr = null) {
+    if (!this.node) return;
+
+    const addr = _multiaddr || this.config.bootstrapMultiaddr;
     if (!addr) {
       console.warn('[P2P] No bootstrap multiaddr configured');
       return;
     }
-    
+
     try {
-      console.log('[P2P] Connecting to bootstrap node:', addr);
+      console.log('[P2P] Connecting to bootstrap:', addr);
+
+      // Extract PeerId from multiaddr string
+      const parts = addr.split('/p2p/');
+      if (parts.length < 2) {
+        throw new Error('Multiaddr missing /p2p/<peerid> component');
+      }
+      const peerIdStr = parts[parts.length - 1];
+      console.log('[P2P] Bootstrap PeerId:', peerIdStr);
       
-      // Parse the full multiaddr (including peer ID)
-      const ma = MultiaddrModule.multiaddr(addr);
+      // Wait for peer to be discovered and added to peer store
+      console.log('[P2P] Waiting for bootstrap peer to be discovered...');
+      await new Promise(resolve => {
+        const checkPeer = () => {
+          const peers = Array.from(this.node.getPeers());
+          const found = peers.find(p => p.toString() === peerIdStr);
+          if (found) {
+            console.log('[P2P] Bootstrap peer found in peer store');
+            resolve();
+          } else {
+            setTimeout(checkPeer, 100);
+          }
+        };
+        checkPeer();
+      });
+
+      // Get PeerId object from peer store
+      const peers = Array.from(this.node.getPeers());
+      const peerIdObj = peers.find(p => p.toString() === peerIdStr);
       
-      console.log('[P2P] Dialing multiaddr directly:', addr);
-      
-      // Dial using the full multiaddr directly
-      // This should work better than extracting peer ID separately
-      const connection = await this.node.dial(ma);
-      console.log('[P2P] ✓ Connected to bootstrap node!');
-      console.log('[P2P] Bootstrap peer ID:', connection.remotePeer.toString());
-      
+      if (!peerIdObj) {
+        throw new Error('Bootstrap peer not found in peer store');
+      }
+
+      // Dial using PeerId object (libp2p finds addresses automatically)
+      console.log('[P2P] Dialing bootstrap peer...');
+      const conn = await this.node.dial(peerIdObj);
+
+      console.log('[P2P] ✓ Connected to bootstrap node! Peer:', conn.remotePeer.toString());
       this.dispatchEvent(new CustomEvent('bootstrap:connected', {
-        detail: { 
-          peerId: connection.remotePeer.toString(),
-          multiaddr: addr
-        }
+        detail: { peerId: conn.remotePeer.toString(), multiaddr: addr }
       }));
-      
     } catch (error) {
       console.error('[P2P] Failed to connect to bootstrap:', error);
-      this.dispatchEvent(new CustomEvent('bootstrap:error', {
-        detail: { error: error.message }
-      }));
+      this.dispatchEvent(new CustomEvent('bootstrap:error', { detail: { error: error.message } }));
     }
   }
   
