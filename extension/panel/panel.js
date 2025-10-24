@@ -2,6 +2,7 @@ import { WebRTCConnectionManager } from '../scripts/webrtc/connectionManager.js'
 import { ChunkManager } from '../scripts/webrtc/chunkManager.js';
 import { RegistryClient } from '../scripts/api/registryClient.js';
 import { TelemetryClient } from '../scripts/telemetry/telemetryClient.js';
+import { P2PManager } from '../scripts/p2p/p2p-manager.js';
 import {
   generateKeypair,
   deriveOwnerIdFromPublicKey,
@@ -103,6 +104,7 @@ let registryClient = null;
 let chunkManager = null;
 let connectionManager = null;
 let localPeerId = null;
+let p2pManager = null; // libp2p manager (Faz 0 test)
 
 // Expose for debugging
 window.debugConnectionManager = () => connectionManager;
