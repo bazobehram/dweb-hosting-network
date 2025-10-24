@@ -125,6 +125,8 @@ server.on('connection', (socket) => {
       console.log(`?? Peer disconnected: ${peerId}`);
     }
   });
+});
+
 server.on('listening', () => {
   console.log(`🚀 Signaling service listening on ws://localhost:${PORT}`);
 });

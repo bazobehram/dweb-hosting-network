@@ -79,6 +79,24 @@ const PEER_FIRST_TOGGLE_STORAGE_KEY = 'dweb-peer-first-toggle';
 const HEALTH_SCORING_TOGGLE_STORAGE_KEY = 'dweb-health-scoring-toggle';
 const E2E_AUTORUN_TOGGLE_STORAGE_KEY = 'dweb-e2e-autorun-toggle';
 const REGISTRY_FALLBACK_TOGGLE_STORAGE_KEY = 'dweb-registry-fallback-toggle';
+const ENV_TOGGLE_STORAGE_KEY = 'dweb-environment';
+
+const ENV_CONFIG = {
+  local: {
+    signaling: 'ws://localhost:8787',
+    registry: 'http://localhost:8788',
+    storage: 'http://localhost:8789',
+    gateway: 'http://localhost:8790'
+  },
+  production: {
+    signaling: 'ws://34.107.74.70:8787',
+    registry: 'http://34.107.74.70:8788',
+    storage: 'http://34.107.74.70:8789',
+    gateway: 'http://34.107.74.70:8790'
+  }
+};
+
+let currentEnv = window.localStorage.getItem(ENV_TOGGLE_STORAGE_KEY) || 'production';
 
 let telemetry = null;
 let registryClient = null;
@@ -173,6 +191,29 @@ if (authState?.ownerId) {
 } else {
   showAuthOverlay();
 }
+
+// Environment toggle
+const envToggle = document.getElementById('envToggle');
+if (envToggle) {
+  envToggle.value = currentEnv;
+  envToggle.addEventListener('change', () => {
+    currentEnv = envToggle.value;
+    window.localStorage.setItem(ENV_TOGGLE_STORAGE_KEY, currentEnv);
+    applyEnvironmentUrls();
+    console.log(`[Env] Switched to ${currentEnv} environment`);
+  });
+}
+
+function applyEnvironmentUrls() {
+  const config = ENV_CONFIG[currentEnv];
+  if (signalingInput) signalingInput.value = config.signaling;
+  if (registryUrlInput) registryUrlInput.value = config.registry;
+  if (storageServiceUrlInput) storageServiceUrlInput.value = config.storage;
+  if (registryClient) registryClient.setBaseUrl(config.registry);
+}
+
+// Apply on load
+applyEnvironmentUrls();
 
 authGuestBtn?.addEventListener('click', async () => {
   try {

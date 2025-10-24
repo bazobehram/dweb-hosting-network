@@ -298,7 +298,7 @@
                 </header>
                 <div class="form-grid">
                   <label for="signalingUrl">Signaling Server URL</label>
-                  <input id="signalingUrl" type="text" value="ws://34.107.74.70:8787" />
+                  <input id="signalingUrl" type="text" value="ws://34.107.74.70:8787" readonly />
 
                   <label for="signalingAuthToken">Signaling Shared Secret</label>
                   <input
@@ -594,6 +594,20 @@
         </section>
 
         <section id="view-settings" class="view">
+          <div class="card">
+            <header>
+              <h3>Environment</h3>
+            </header>
+            <div class="form-grid">
+              <label for="envToggle">Target Environment</label>
+              <select id="envToggle">
+                <option value="production">Production (VPS)</option>
+                <option value="local">Local Development</option>
+              </select>
+              <p class="hint" style="grid-column: 1 / -1;">Switch between local testing (localhost) and production (VPS) services. Local is recommended for development.</p>
+            </div>
+          </div>
+          
           <div class="card">
             <header>
               <h3>Network Settings</h3>
