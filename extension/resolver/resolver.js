@@ -15,10 +15,24 @@ const statusLastEl = document.getElementById("statusLast");
 const statusTotalsEl = document.getElementById("statusTotals");
 const statusFallbackEl = document.getElementById("statusFallback");
 
+const ENV_CONFIG = {
+  local: {
+    registry: 'http://localhost:8788',
+    storage: 'http://localhost:8789'
+  },
+  production: {
+    registry: 'http://34.107.74.70:8788',
+    storage: 'http://34.107.74.70:8789'
+  }
+};
+
+const currentEnv = window.localStorage.getItem('dweb-environment') || 'production';
+const config = ENV_CONFIG[currentEnv];
+
 const REGISTRY_API_KEY_STORAGE_KEY = "dweb-registry-api-key";
 const STORAGE_API_KEY_STORAGE_KEY = "dweb-storage-api-key";
 const STORAGE_SERVICE_URL_STORAGE_KEY = "dweb-storage-service-url";
-const DEFAULT_STORAGE_SERVICE_URL = "http://34.107.74.70:8789";
+const DEFAULT_STORAGE_SERVICE_URL = config.storage;
 const SOURCE_LABELS = {
   peer: "Peer",
   pointer: "Storage pointer",
@@ -33,7 +47,12 @@ let storageApiKey = loadStorageApiKey();
 let storageServiceUrl =
   normaliseStorageServiceUrl(loadStorageServiceUrl()) || DEFAULT_STORAGE_SERVICE_URL;
 let storageServiceOrigin = computeOrigin(storageServiceUrl);
-let registryClient = new RegistryClient(registryUrlInput.value, {
+
+// Apply environment URLs
+if (registryUrlInput) registryUrlInput.value = config.registry;
+if (storageServiceUrlInput) storageServiceUrlInput.value = config.storage;
+
+let registryClient = new RegistryClient(config.registry, {
   apiKey: currentRegistryApiKey,
 });
 const telemetry = new TelemetryClient({ component: "resolver" });
