@@ -1,0 +1,237 @@
+{
+  "timestamp": "2025-10-26T11:42:00.167Z",
+  "duration": "118.0s",
+  "summary": {
+    "total": 30,
+    "passed": 11,
+    "failed": 2,
+    "productionReady": false
+  },
+  "workflow": {
+    "appUploaded": true,
+    "domainRegistered": true,
+    "manifestId": "tr-1761478883738-mcebj0",
+    "domain": "prod-test-1761478895807.dweb"
+  },
+  "results": [
+    {
+      "status": "progress",
+      "step": "SETUP",
+      "message": "Starting backend services...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:02.171Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Registry...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:02.171Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Registry ready (port 8788)",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:02.474Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Signaling...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:03.475Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Signaling ready (port 8787)",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:03.560Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Storage...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:04.564Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Storage ready (port 8789)",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:04.951Z"
+    },
+    {
+      "status": "pass",
+      "step": "SETUP",
+      "message": "All services running",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:06.966Z"
+    },
+    {
+      "status": "progress",
+      "step": "SETUP",
+      "message": "Launching browser with extension...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:06.966Z"
+    },
+    {
+      "status": "pass",
+      "step": "SETUP",
+      "message": "Browser launched",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:10.397Z"
+    },
+    {
+      "status": "pass",
+      "step": "SETUP",
+      "message": "Extension ID: dhnlmdolnenmkealoekhnmjknllealip",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:10.397Z"
+    },
+    {
+      "status": "progress",
+      "step": "SETUP",
+      "message": "Opening user panels...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:10.398Z"
+    },
+    {
+      "status": "pass",
+      "step": "SETUP",
+      "message": "User 1 panel ready",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:12.104Z"
+    },
+    {
+      "status": "pass",
+      "step": "SETUP",
+      "message": "User 2 panel ready",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:14.717Z"
+    },
+    {
+      "status": "progress",
+      "step": "USER1",
+      "message": "Waiting for P2P network...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:16.723Z"
+    },
+    {
+      "status": "fail",
+      "step": "USER1",
+      "message": "P2P failed to start",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:47.023Z"
+    },
+    {
+      "status": "progress",
+      "step": "USER2",
+      "message": "Waiting for P2P network...",
+      "data": null,
+      "timestamp": "2025-10-26T11:40:47.023Z"
+    },
+    {
+      "status": "fail",
+      "step": "USER2",
+      "message": "P2P failed to start",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:17.259Z"
+    },
+    {
+      "status": "warn",
+      "step": "P2P",
+      "message": "P2P not fully ready - continuing anyway",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:17.259Z"
+    },
+    {
+      "status": "progress",
+      "step": "USER1",
+      "message": "📤 Uploading application...",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:17.259Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "prod-01-user1-upload-start-1761478877259.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:18.350Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "prod-02-user1-upload-complete-1761478893749.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:35.807Z"
+    },
+    {
+      "status": "pass",
+      "step": "USER1",
+      "message": "App uploaded: tr-1761478883738-mcebj0",
+      "data": {
+        "success": true,
+        "manifestId": "tr-1761478883738-mcebj0",
+        "chunks": "1",
+        "peers": "1"
+      },
+      "timestamp": "2025-10-26T11:41:35.807Z"
+    },
+    {
+      "status": "progress",
+      "step": "USER1",
+      "message": "🌐 Registering domain...",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:35.807Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "prod-03-user1-domain-registered-1761478899317.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:41.377Z"
+    },
+    {
+      "status": "pass",
+      "step": "USER1",
+      "message": "Domain registered: prod-test-1761478895807.dweb",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:41.377Z"
+    },
+    {
+      "status": "progress",
+      "step": "USER2",
+      "message": "🔍 Resolving domain and loading app...",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:44.377Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "prod-04-user2-resolver-1761478907471.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:41:47.564Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "prod-05-user2-app-loaded-1761478920080.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:42:00.167Z"
+    },
+    {
+      "status": "pass",
+      "step": "USER2",
+      "message": "App loaded successfully!",
+      "data": {
+        "success": true,
+        "contentLength": 2241,
+        "title": "DWeb Resolver"
+      },
+      "timestamp": "2025-10-26T11:42:00.167Z"
+    }
+  ]
+}

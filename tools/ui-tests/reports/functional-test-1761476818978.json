@@ -1,0 +1,60 @@
+{
+  "passed": 2,
+  "failed": 3,
+  "warnings": 0,
+  "results": [
+    {
+      "status": "fail",
+      "test": "Registry Connection",
+      "message": "Failed to fetch",
+      "details": null,
+      "timestamp": "2025-10-26T11:06:55.333Z"
+    },
+    {
+      "status": "fail",
+      "test": "Network Health",
+      "message": "Errors detected: Registry",
+      "details": {
+        "mode": "Mode: Unknown",
+        "peers": "Peers: 0",
+        "channel": "Channel: Closed",
+        "signaling": "Signaling: OK",
+        "registry": "Registry: ERR",
+        "storage": "Storage: OK"
+      },
+      "timestamp": "2025-10-26T11:06:55.336Z"
+    },
+    {
+      "status": "pass",
+      "test": "P2P System",
+      "message": "libp2p is running",
+      "details": {
+        "success": true,
+        "isStarted": true,
+        "peerId": "12D3KooWBXihJfWJUxq5GZ3qrNstoxQcjDcnAzWRP1aeKzn2WpR1",
+        "peerCount": 1,
+        "dhtEnabled": true,
+        "hasProtocols": true
+      },
+      "timestamp": "2025-10-26T11:06:55.337Z"
+    },
+    {
+      "status": "pass",
+      "test": "Publish Flow",
+      "message": "Publish modal opens correctly",
+      "details": {
+        "modalExists": true,
+        "modalVisible": true,
+        "step1Active": true
+      },
+      "timestamp": "2025-10-26T11:06:56.355Z"
+    },
+    {
+      "status": "fail",
+      "test": "Domain Registration",
+      "message": "Failed to fetch",
+      "details": null,
+      "timestamp": "2025-10-26T11:06:58.976Z"
+    }
+  ]
+}

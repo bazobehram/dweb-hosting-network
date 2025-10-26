@@ -1,0 +1,13 @@
+
+> @dweb/extension@0.1.0 build
+> node build.cjs
+
+≡ƒö¿ Building extension bundles...
+
+  dist\libp2p-test.js      1.5mb
+  dist\p2p-manager.js      1.4mb
+  dist\libp2p-test.js.map  3.3mb
+  dist\p2p-manager.js.map  3.3mb
+
+Done in 222ms
+Γ£à Build complete!

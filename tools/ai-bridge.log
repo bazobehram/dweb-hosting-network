@@ -1,0 +1,12 @@
+{
+  "startTime": 1761454412079,
+  "duration": 80446,
+  "totalErrors": 2,
+  "insights": 0,
+  "errorTypes": {
+    "network-fail": 2
+  },
+  "recentInsights": []
+}[2025-10-26T05:00:27.245Z] 
+[ERROR] [P2P] Full error: EncryptionFailedError: Payload identity key 12D3KooWM9hTrc5kuV7huH3wFye8xQGdAo6tZ9YHfYo59JSoqFHe does not match expected remote identity key 12D3KooWDqE8DxdvGqS6ekd3xRqbFuvJFX7TXyJcUmWkHPX6268T
+  Location: chrome-extension://dhnlmdolnenmkealoekhnmjknllealip/dist/libp2p-test.js:39166

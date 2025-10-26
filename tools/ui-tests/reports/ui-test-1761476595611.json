@@ -1,0 +1,201 @@
+{
+  "timestamp": "2025-10-26T11:03:15.611Z",
+  "successes": 2,
+  "warnings": 0,
+  "errors": 22,
+  "details": {
+    "successes": [
+      {
+        "type": "success",
+        "message": "Connected to panel",
+        "details": null,
+        "timestamp": "2025-10-26T11:03:14.063Z"
+      },
+      {
+        "type": "success",
+        "message": "libp2p is already started",
+        "details": null,
+        "timestamp": "2025-10-26T11:03:15.607Z"
+      }
+    ],
+    "warnings": [],
+    "errors": [
+      {
+        "type": "error",
+        "message": "Element not found: Dashboard Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"dashboard\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.067Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Publish Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"hosting\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.068Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Domains Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"domains\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.069Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Bindings Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"bindings\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.069Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Settings Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"settings\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.070Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Open Resolver Button",
+        "details": {
+          "selector": "#openResolverFromSidebar"
+        },
+        "timestamp": "2025-10-26T11:03:14.070Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Quick Actions",
+        "details": {
+          "selector": ".action-btn"
+        },
+        "timestamp": "2025-10-26T11:03:14.071Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Settings Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"settings\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.072Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Registry URL Input",
+        "details": {
+          "selector": "#registryUrl"
+        },
+        "timestamp": "2025-10-26T11:03:14.583Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Registry API Key Input",
+        "details": {
+          "selector": "#registryApiKey"
+        },
+        "timestamp": "2025-10-26T11:03:14.584Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Background Peer Toggle",
+        "details": {
+          "selector": "#toggleBackgroundPeer"
+        },
+        "timestamp": "2025-10-26T11:03:14.584Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Owner ID Display",
+        "details": {
+          "selector": "#settingsOwnerId"
+        },
+        "timestamp": "2025-10-26T11:03:14.585Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Hosting Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"hosting\"]"
+        },
+        "timestamp": "2025-10-26T11:03:14.586Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Publish New App Button",
+        "details": {
+          "selector": "#publishNewAppBtn"
+        },
+        "timestamp": "2025-10-26T11:03:15.094Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Apps List Container",
+        "details": {
+          "selector": "#appsList"
+        },
+        "timestamp": "2025-10-26T11:03:15.094Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Connect Button (Dev Tools)",
+        "details": {
+          "selector": "#connectBtn"
+        },
+        "timestamp": "2025-10-26T11:03:15.095Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Signaling URL Input (Dev Tools)",
+        "details": {
+          "selector": "#signalingUrl"
+        },
+        "timestamp": "2025-10-26T11:03:15.096Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Domains Tab",
+        "details": {
+          "selector": ".nav-item[data-view=\"domains\"]"
+        },
+        "timestamp": "2025-10-26T11:03:15.096Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Domain Search Input",
+        "details": {
+          "selector": "#domainSearchInput"
+        },
+        "timestamp": "2025-10-26T11:03:15.603Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Register New Domain Button",
+        "details": {
+          "selector": "#registerNewDomainBtn"
+        },
+        "timestamp": "2025-10-26T11:03:15.604Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Domains Table",
+        "details": {
+          "selector": "#domainTable"
+        },
+        "timestamp": "2025-10-26T11:03:15.605Z"
+      },
+      {
+        "type": "error",
+        "message": "Element not found: Refresh Domains Button",
+        "details": {
+          "selector": "#refreshDomainsBtn"
+        },
+        "timestamp": "2025-10-26T11:03:15.605Z"
+      }
+    ]
+  }
+}

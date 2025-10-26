@@ -2217,7 +2217,7 @@ if (typeof storedPersistence.uploadChunksToStorage === 'boolean') {
   persistenceSettings.uploadChunksToStorage = storedPersistence.uploadChunksToStorage;
 }
 applyPersistenceToggleState();
-const DEFAULT_MAX_REPLICA_TARGETS = 3;
+const DEFAULT_MAX_REPLICA_TARGETS = 5; // Increased from 3 for better availability and security
 const MAX_REPLICATION_RETRIES = 3;
 const REPLICATION_ACK_TIMEOUT = 8_000;
 const REPLICATION_MAX_INFLIGHT = 2;
@@ -5082,6 +5082,12 @@ function refreshRegisterButtonState() {
   }
 }
 
+// Expose chunk cache functions for P2P integration
+window.getCachedChunk = getCachedChunk;
+window.cacheChunk = cacheChunk;
+window.getChunkBase64 = getChunkBase64;
+window.chunkManager = chunkManager;
+
 // Attempt auto-connection (always, not just when authenticated)
 setTimeout(() => attemptAutoConnect(), 500);
 
@@ -5171,18 +5177,44 @@ signOutBtn?.addEventListener('click', async () => {
   }
 });
 
+// Auto-start P2P manager on panel load
+async function autoStartP2P() {
+  try {
+    // Check if toggle is enabled
+    const bgPeerToggle = document.getElementById('toggleBackgroundPeer');
+    if (bgPeerToggle && !bgPeerToggle.checked) {
+      console.log('[Panel] P2P auto-start disabled by user');
+      return;
+    }
+    
+    // Only auto-start if not already running
+    if (window.p2pManager && window.p2pManager.isStarted) {
+      console.log('[Panel] P2P already running');
+      return;
+    }
+    
+    console.log('[Panel] Auto-starting P2P manager...');
+    
+    // Get bootstrap multiaddr from environment
+    // Must use libp2p multiaddr format: /ip4/HOST/tcp/PORT/ws
+    const env = currentEnv || 'local';
+    const bootstrapAddr = env === 'production' 
+      ? '/dns4/34.107.74.70/tcp/8787/ws'
+      : '/dns4/localhost/tcp/8787/ws';
+    
+    // Import and start via libp2p-test.js global function
+    if (typeof window.testLibp2pStart === 'function') {
+      await window.testLibp2pStart(bootstrapAddr);
+      console.log('[Panel] ✅ P2P manager auto-started');
+    } else {
+      console.warn('[Panel] testLibp2pStart not available yet, retrying...');
+      setTimeout(autoStartP2P, 1000);
+    }
+  } catch (error) {
+    console.error('[Panel] P2P auto-start failed:', error);
+  }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+// Start P2P after a short delay to ensure all scripts loaded
+setTimeout(autoStartP2P, 1500);
 

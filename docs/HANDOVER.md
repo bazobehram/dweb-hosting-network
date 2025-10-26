@@ -1,4 +1,4 @@
-# DWeb Hosting Network - Current Handover (October 22, 2025)
+# DWeb Hosting Network - Current Handover (October 26, 2025)
 
 ## Project Snapshot
 - **Short Aim:** Veri yolu peer’lerde kalsın, merkezi bileşenler yalnızca kolaylaştırsın. Şu anda hedeflenen veri akışı: yayınla → alan adı bağla → çöz → göster aşamaları peer-first ilerlesin; çoğaltma + onayla dayanıklılık hissettir; temel metrikler/pano ile sağlık görünür olsun; koordinasyon katmanı dursa bile hizmet soft-fallback ile ayakta kalsın. Uzun vadede merkezi bağımlılıklar adım adım azaltılıp kullanıcıların kendi kaynaklarını ekleyebildiği federatif yapıya evrilecek.
@@ -43,11 +43,70 @@
 - **Observability:** Logs via `journalctl`; no central log aggregation or metrics dashboards.
 - **Automation:** Manual VM setup; need infrastructure as code, CI smoke tests, and scripted deploys before production.
 
-## Active Initiative (Phase 1)
-Goal: **real peer-to-peer replication across networks**  
-Key tasks (in progress):
-1. Finalise TURN credentials and keep repeating cross-network replication plan (different ISPs / NAT scenarios) to ensure TURN stability and investigate STUN timeout warnings.
-2. Extend replication queue for multi-peer targets (parallel peers, richer metrics).
+## Active Initiative (Phase 1: libp2p Migration)
+Goal: **Migrate from WebRTC signaling to libp2p for true P2P architecture**  
+
+### Completed (October 26, 2025)
+✅ **libp2p Integration:**
+- Bootstrap server running on port 9104 with WebSocket transport
+- Browser extension using libp2p-js with WebRTC + WebSocket + Circuit Relay support
+- Peer discovery via bootstrap node working
+- Connection encryption via @chainsafe/libp2p-noise
+- Stream multiplexing via @libp2p/mplex
+- Peer exchange protocol implemented (`/dweb/peer-exchange/1.0.0`)
+- Chunk transfer protocol ready (`/dweb/chunk/1.0.0`)
+
+✅ **Development Tools:**
+- AI-Browser Bridge: Autonomous Chrome DevTools Protocol monitoring
+- Bootstrap monitor: Real-time log monitoring with emoji highlights
+- CDP-based automated testing scripts
+- Alert-free UI for smoother testing flow
+
+✅ **Stream API Compatibility:**
+- Bootstrap server handles both standard libp2p streams (source/sink) and MplexStream (sendData)
+- Browser correctly uses MplexStream API with length-prefixed encoding
+- Peer exchange requests successfully sent and received
+
+### In Progress
+🔄 **Multi-peer Discovery:**
+- Two browsers connecting to bootstrap ✅
+- Browsers discovering each other via peer exchange 🔄
+- Testing with 3+ simultaneous peers 📋
+
+🔄 **Chunk Transfer Testing:**
+- Protocol handlers registered ✅
+- End-to-end file transfer test pending 📋
+
+### Technical Details
+**libp2p Stack:**
+```javascript
+// Browser (extension/scripts/p2p/p2p-manager.js)
+- Transports: WebRTC, WebSockets, Circuit Relay v2
+- Connection Encrypters: @chainsafe/libp2p-noise
+- Stream Muxers: @libp2p/mplex
+- Services: identify, autoNAT
+- Protocols: /dweb/peer-exchange/1.0.0, /dweb/chunk/1.0.0
+
+// Bootstrap Server (backend/bootstrap-node/bootstrap-server.js)
+- Transports: TCP, WebSockets
+- Port: 9104 (WebSocket)
+- Peer ID: 12D3KooWGjn6xyp4p7Ks5MY5uQA6eEGhBv3sKby3BQwoDmPkqvDD
+- Services: Circuit Relay Server, Kad-DHT, autoNAT, ping
+```
+
+**Testing Commands:**
+```bash
+# Start monitored bootstrap server
+cd tools
+node monitor-bootstrap.js
+
+# Test peer exchange (requires extension panel open)
+node test-with-real-bootstrap.js
+node force-peer-exchange.js
+
+# Check panel console
+node check-panel-console.js
+```
 
 ## Near-Term Roadmap (Goal & Outcome Centric)
 

@@ -1,0 +1,244 @@
+{
+  "timestamp": "2025-10-26T11:21:26.885Z",
+  "duration": "37.3s",
+  "summary": {
+    "total": 31,
+    "passed": 11,
+    "failed": 2,
+    "warnings": 0,
+    "productionReady": false
+  },
+  "results": [
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting backend services...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:49.610Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Registry...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:49.611Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Registry running on port 8788",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:49.913Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Signaling...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:50.921Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Signaling running on port 8787",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:51.006Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Storage...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:52.019Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Storage running on port 8789",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:52.404Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "All backend services started",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:54.417Z"
+    },
+    {
+      "status": "progress",
+      "step": "BROWSER",
+      "message": "Launching Chromium with extension...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:54.417Z"
+    },
+    {
+      "status": "pass",
+      "step": "BROWSER",
+      "message": "Chromium launched",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:54.825Z"
+    },
+    {
+      "status": "progress",
+      "step": "EXTENSION",
+      "message": "Finding extension ID...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:57.840Z"
+    },
+    {
+      "status": "pass",
+      "step": "EXTENSION",
+      "message": "Found ID: dhnlmdolnenmkealoekhnmjknllealip",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:57.841Z"
+    },
+    {
+      "status": "progress",
+      "step": "PANELS",
+      "message": "Opening panel instances...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:57.841Z"
+    },
+    {
+      "status": "pass",
+      "step": "PANELS",
+      "message": "Panel 1 loaded",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:59.174Z"
+    },
+    {
+      "status": "pass",
+      "step": "PANELS",
+      "message": "Panel 2 loaded",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:01.833Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 01-panels-loaded-1761477663841.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:04.932Z"
+    },
+    {
+      "status": "progress",
+      "step": "DASHBOARD",
+      "message": "Checking service health...",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:04.932Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 02-dashboard-1761477667937.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:07.998Z"
+    },
+    {
+      "status": "pass",
+      "step": "DASHBOARD",
+      "message": "All services healthy",
+      "data": {
+        "signaling": "Signaling: OK",
+        "registry": "Registry: OK",
+        "storage": "Storage: OK",
+        "peers": "Peers: 0",
+        "mode": "Mode: Peer"
+      },
+      "timestamp": "2025-10-26T11:21:07.999Z"
+    },
+    {
+      "status": "progress",
+      "step": "P2P",
+      "message": "Testing P2P network...",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:07.999Z"
+    },
+    {
+      "status": "fail",
+      "step": "P2P",
+      "message": "P2P manager not initialized",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:08.002Z"
+    },
+    {
+      "status": "progress",
+      "step": "NAVIGATION",
+      "message": "Testing all views...",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:08.002Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 06-all-views-1761477676602.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:18.125Z"
+    },
+    {
+      "status": "pass",
+      "step": "NAVIGATION",
+      "message": "All views accessible",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:18.125Z"
+    },
+    {
+      "status": "progress",
+      "step": "PUBLISH",
+      "message": "Testing publish modal...",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:18.125Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 03-hosting-view-1761477679147.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:21.201Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 04-publish-modal-1761477682236.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:23.296Z"
+    },
+    {
+      "status": "pass",
+      "step": "PUBLISH",
+      "message": "Publish modal working",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:23.818Z"
+    },
+    {
+      "status": "progress",
+      "step": "DOMAIN",
+      "message": "Testing domain registration...",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:23.818Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 05-domains-view-1761477684832.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:26.878Z"
+    },
+    {
+      "status": "fail",
+      "step": "DOMAIN",
+      "message": "Registration failed: 404",
+      "data": null,
+      "timestamp": "2025-10-26T11:21:26.885Z"
+    }
+  ],
+  "screenshots": [
+    "01-panels-loaded-1761477663841.png",
+    "02-dashboard-1761477667937.png",
+    "06-all-views-1761477676602.png",
+    "03-hosting-view-1761477679147.png",
+    "04-publish-modal-1761477682236.png",
+    "05-domains-view-1761477684832.png"
+  ]
+}

@@ -11,6 +11,13 @@
   "scripts": {
     "lint": "echo \"No lint configuration yet\"",
     "test": "echo \"No tests configured yet\"",
-    "dev": "echo \"Use workspace scripts\""
+    "dev": "echo \"Use workspace scripts\"",
+    "test:ui": "node tools/playwright-test.js",
+    "test:comprehensive": "node tools/comprehensive-test.js",
+    "test:two-browsers": "node tools/test-two-browsers.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0",
+    "chrome-remote-interface": "^0.32.0"
   }
 }

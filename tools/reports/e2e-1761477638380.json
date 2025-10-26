@@ -1,0 +1,212 @@
+{
+  "timestamp": "2025-10-26T11:20:38.379Z",
+  "duration": "108.9s",
+  "summary": {
+    "total": 27,
+    "passed": 9,
+    "failed": 4,
+    "warnings": 0,
+    "productionReady": false
+  },
+  "results": [
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting backend services...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:49.465Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Registry...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:49.465Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Registry running on port 8788",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:49.771Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Signaling...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:50.776Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Signaling running on port 8787",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:50.861Z"
+    },
+    {
+      "status": "progress",
+      "step": "SERVICES",
+      "message": "Starting Storage...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:51.875Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "Storage running on port 8789",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:52.256Z"
+    },
+    {
+      "status": "pass",
+      "step": "SERVICES",
+      "message": "All backend services started",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:54.267Z"
+    },
+    {
+      "status": "progress",
+      "step": "BROWSER",
+      "message": "Launching Chromium with extension...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:54.267Z"
+    },
+    {
+      "status": "pass",
+      "step": "BROWSER",
+      "message": "Chromium launched",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:54.720Z"
+    },
+    {
+      "status": "progress",
+      "step": "EXTENSION",
+      "message": "Finding extension ID...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:57.733Z"
+    },
+    {
+      "status": "pass",
+      "step": "EXTENSION",
+      "message": "Found ID: dhnlmdolnenmkealoekhnmjknllealip",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:57.733Z"
+    },
+    {
+      "status": "progress",
+      "step": "PANELS",
+      "message": "Opening panel instances...",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:57.733Z"
+    },
+    {
+      "status": "pass",
+      "step": "PANELS",
+      "message": "Panel 1 loaded",
+      "data": null,
+      "timestamp": "2025-10-26T11:18:59.455Z"
+    },
+    {
+      "status": "pass",
+      "step": "PANELS",
+      "message": "Panel 2 loaded",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:02.129Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 01-panels-loaded-1761477544143.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:05.245Z"
+    },
+    {
+      "status": "progress",
+      "step": "DASHBOARD",
+      "message": "Checking service health...",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:05.245Z"
+    },
+    {
+      "status": "info",
+      "step": "SCREENSHOT",
+      "message": "Saved: 02-dashboard-1761477548250.png",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:08.329Z"
+    },
+    {
+      "status": "pass",
+      "step": "DASHBOARD",
+      "message": "All services healthy",
+      "data": {
+        "signaling": "Signaling: OK",
+        "registry": "Registry: OK",
+        "storage": "Storage: OK",
+        "peers": "Peers: 0",
+        "mode": "Mode: Peer"
+      },
+      "timestamp": "2025-10-26T11:19:08.329Z"
+    },
+    {
+      "status": "progress",
+      "step": "P2P",
+      "message": "Testing P2P network...",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:08.329Z"
+    },
+    {
+      "status": "fail",
+      "step": "P2P",
+      "message": "P2P manager not initialized",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:08.332Z"
+    },
+    {
+      "status": "progress",
+      "step": "NAVIGATION",
+      "message": "Testing all views...",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:08.333Z"
+    },
+    {
+      "status": "fail",
+      "step": "NAVIGATION",
+      "message": "Navigation error: page.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-view=\"dashboard\"]')\u001b[22m\n\u001b[2m    - locator resolved to <button data-view=\"dashboard\" class=\"nav-item active\">Dashboard</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    43 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and stable\u001b[22m\n",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:38.349Z"
+    },
+    {
+      "status": "progress",
+      "step": "PUBLISH",
+      "message": "Testing publish modal...",
+      "data": null,
+      "timestamp": "2025-10-26T11:19:38.349Z"
+    },
+    {
+      "status": "fail",
+      "step": "PUBLISH",
+      "message": "Modal test error: page.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-view=\"hosting\"]')\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"nav-item\" data-view=\"hosting\">Publish</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    11 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and stable\u001b[22m\n",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:08.361Z"
+    },
+    {
+      "status": "progress",
+      "step": "DOMAIN",
+      "message": "Testing domain registration...",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:08.361Z"
+    },
+    {
+      "status": "fail",
+      "step": "DOMAIN",
+      "message": "Domain test error: page.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-view=\"domains\"]')\u001b[22m\n\u001b[2m    - locator resolved to <button class=\"nav-item\" data-view=\"domains\">Domains</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    11 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div id=\"authOverlay\" class=\"auth-overlay\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and stable\u001b[22m\n",
+      "data": null,
+      "timestamp": "2025-10-26T11:20:38.379Z"
+    }
+  ],
+  "screenshots": [
+    "01-panels-loaded-1761477544143.png",
+    "02-dashboard-1761477548250.png"
+  ]
+}

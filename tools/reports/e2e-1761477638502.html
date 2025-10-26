@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>E2E Test Report - 10/26/2025, 2:20:38 PM</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a0e27; color: #e0e6ed; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; padding: 30px 0; border-bottom: 2px solid #1e293b; }
+    h1 { font-size: 2.5em; margin-bottom: 10px; }
+    .subtitle { color: #64748b; font-size: 1.1em; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 30px 0; }
+    .stat { background: #1e293b; border-radius: 12px; padding: 25px; text-align: center; border: 2px solid #334155; }
+    .stat-value { font-size: 3em; font-weight: bold; margin: 10px 0; }
+    .stat-pass { color: #10b981; }
+    .stat-fail { color: #ef4444; }
+    .stat-warn { color: #f59e0b; }
+    .stat-total { color: #3b82f6; }
+    .stat-label { color: #94a3b8; font-size: 0.9em; text-transform: uppercase; }
+    .results { background: #1e293b; border-radius: 12px; padding: 25px; margin: 20px 0; }
+    .result-item { padding: 12px; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 15px; }
+    .result-item:last-child { border-bottom: none; }
+    .result-icon { font-size: 1.5em; }
+    .result-pass { background: rgba(16, 185, 129, 0.1); }
+    .result-fail { background: rgba(239, 68, 68, 0.1); }
+    .result-warn { background: rgba(245, 158, 11, 0.1); }
+    .result-content { flex: 1; }
+    .result-step { color: #94a3b8; font-size: 0.9em; }
+    .result-message { color: #e0e6ed; margin-top: 5px; }
+    .screenshots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+    .screenshot { background: #1e293b; border-radius: 12px; padding: 15px; border: 2px solid #334155; }
+    .screenshot img { width: 100%; border-radius: 8px; }
+    .screenshot-label { text-align: center; margin-top: 10px; color: #94a3b8; }
+    .status-badge { display: inline-block; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 1.2em; }
+    .status-pass { background: #10b981; color: white; }
+    .status-fail { background: #ef4444; color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🚀 E2E Test Report</h1>
+      <div class="subtitle">2025-10-26T11:20:38.379Z</div>
+      <div style="margin-top: 20px;">
+        <span class="status-badge status-fail">
+          ❌ NEEDS ATTENTION
+        </span>
+      </div>
+    </header>
+
+    <div class="summary">
+      <div class="stat">
+        <div class="stat-label">Total Tests</div>
+        <div class="stat-value stat-total">27</div>
+        <div class="stat-label">Duration: 108.9s</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Passed</div>
+        <div class="stat-value stat-pass">9</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Failed</div>
+        <div class="stat-value stat-fail">4</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Warnings</div>
+        <div class="stat-value stat-warn">0</div>
+      </div>
+    </div>
+
+    <div class="results">
+      <h2 style="margin-bottom: 20px;">Test Results</h2>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Starting backend services...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:49</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Starting Registry...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:49</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Registry running on port 8788</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:49</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Starting Signaling...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:50</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Signaling running on port 8787</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:50</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Starting Storage...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:51</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">Storage running on port 8789</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:52</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[SERVICES]</div>
+            <div class="result-message">All backend services started</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:54</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[BROWSER]</div>
+            <div class="result-message">Launching Chromium with extension...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:54</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[BROWSER]</div>
+            <div class="result-message">Chromium launched</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:54</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[EXTENSION]</div>
+            <div class="result-message">Finding extension ID...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:57</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[EXTENSION]</div>
+            <div class="result-message">Found ID: dhnlmdolnenmkealoekhnmjknllealip</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:57</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[PANELS]</div>
+            <div class="result-message">Opening panel instances...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:57</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[PANELS]</div>
+            <div class="result-message">Panel 1 loaded</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:18:59</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[PANELS]</div>
+            <div class="result-message">Panel 2 loaded</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:02</div>
+        </div>
+      
+        <div class="result-item result-info">
+          <div class="result-icon">ℹ️</div>
+          <div class="result-content">
+            <div class="result-step">[SCREENSHOT]</div>
+            <div class="result-message">Saved: 01-panels-loaded-1761477544143.png</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:05</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[DASHBOARD]</div>
+            <div class="result-message">Checking service health...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:05</div>
+        </div>
+      
+        <div class="result-item result-info">
+          <div class="result-icon">ℹ️</div>
+          <div class="result-content">
+            <div class="result-step">[SCREENSHOT]</div>
+            <div class="result-message">Saved: 02-dashboard-1761477548250.png</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:08</div>
+        </div>
+      
+        <div class="result-item result-pass">
+          <div class="result-icon">✅</div>
+          <div class="result-content">
+            <div class="result-step">[DASHBOARD]</div>
+            <div class="result-message">All services healthy</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:08</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[P2P]</div>
+            <div class="result-message">Testing P2P network...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:08</div>
+        </div>
+      
+        <div class="result-item result-fail">
+          <div class="result-icon">❌</div>
+          <div class="result-content">
+            <div class="result-step">[P2P]</div>
+            <div class="result-message">P2P manager not initialized</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:08</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[NAVIGATION]</div>
+            <div class="result-message">Testing all views...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:08</div>
+        </div>
+      
+        <div class="result-item result-fail">
+          <div class="result-icon">❌</div>
+          <div class="result-content">
+            <div class="result-step">[NAVIGATION]</div>
+            <div class="result-message">Navigation error: page.click: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('[data-view="dashboard"]')[22m
+[2m    - locator resolved to <button data-view="dashboard" class="nav-item active">Dashboard</button>[22m
+[2m  - attempting click action[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m      - waiting 100ms[22m
+[2m    43 × waiting for element to be visible, enabled and stable[22m
+[2m       - element is visible, enabled and stable[22m
+[2m       - scrolling into view if needed[22m
+[2m       - done scrolling[22m
+[2m       - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m     - retrying click action[22m
+[2m       - waiting 500ms[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:38</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[PUBLISH]</div>
+            <div class="result-message">Testing publish modal...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:19:38</div>
+        </div>
+      
+        <div class="result-item result-fail">
+          <div class="result-icon">❌</div>
+          <div class="result-content">
+            <div class="result-step">[PUBLISH]</div>
+            <div class="result-message">Modal test error: page.click: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('[data-view="hosting"]')[22m
+[2m    - locator resolved to <button class="nav-item" data-view="hosting">Publish</button>[22m
+[2m  - attempting click action[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m      - waiting 100ms[22m
+[2m    11 × waiting for element to be visible, enabled and stable[22m
+[2m       - element is visible, enabled and stable[22m
+[2m       - scrolling into view if needed[22m
+[2m       - done scrolling[22m
+[2m       - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m     - retrying click action[22m
+[2m       - waiting 500ms[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:20:08</div>
+        </div>
+      
+        <div class="result-item result-progress">
+          <div class="result-icon">🔄</div>
+          <div class="result-content">
+            <div class="result-step">[DOMAIN]</div>
+            <div class="result-message">Testing domain registration...</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:20:08</div>
+        </div>
+      
+        <div class="result-item result-fail">
+          <div class="result-icon">❌</div>
+          <div class="result-content">
+            <div class="result-step">[DOMAIN]</div>
+            <div class="result-message">Domain test error: page.click: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('[data-view="domains"]')[22m
+[2m    - locator resolved to <button class="nav-item" data-view="domains">Domains</button>[22m
+[2m  - attempting click action[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible, enabled and stable[22m
+[2m      - element is visible, enabled and stable[22m
+[2m      - scrolling into view if needed[22m
+[2m      - done scrolling[22m
+[2m      - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m    - retrying click action[22m
+[2m      - waiting 100ms[22m
+[2m    11 × waiting for element to be visible, enabled and stable[22m
+[2m       - element is visible, enabled and stable[22m
+[2m       - scrolling into view if needed[22m
+[2m       - done scrolling[22m
+[2m       - <div id="authOverlay" class="auth-overlay">…</div> intercepts pointer events[22m
+[2m     - retrying click action[22m
+[2m       - waiting 500ms[22m
+[2m    - waiting for element to be visible, enabled and stable[22m
+</div>
+          </div>
+          <div style="color: #64748b; font-size: 0.85em;">11:20:38</div>
+        </div>
+      
+    </div>
+
+    
+    <div class="screenshots">
+      <h2 style="grid-column: 1/-1; margin-bottom: 10px;">Screenshots</h2>
+      
+        <div class="screenshot">
+          <img src="../screenshots/01-panels-loaded-1761477544143.png" alt="01-panels-loaded-1761477544143.png" />
+          <div class="screenshot-label">01-panels-loaded-1761477544143.png</div>
+        </div>
+      
+        <div class="screenshot">
+          <img src="../screenshots/02-dashboard-1761477548250.png" alt="02-dashboard-1761477548250.png" />
+          <div class="screenshot-label">02-dashboard-1761477548250.png</div>
+        </div>
+      
+    </div>
+    
+  </div>
+</body>
+</html>

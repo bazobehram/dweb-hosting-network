@@ -15,6 +15,24 @@ if (!fs.existsSync(distDir)) {
   fs.mkdirSync(distDir, { recursive: true });
 }
 
+// Esbuild plugin to ensure it-ws uses the browser WebSocket shim
+const aliasItWsWebSocket = {
+  name: 'alias-it-ws-web-socket',
+  setup(build) {
+    // Internal relative import from it-ws/client -> './web-socket.js'
+    build.onResolve({ filter: /^\.\/web-socket\.js$/ }, args => {
+      if (args.importer && args.importer.includes(`${path.sep}it-ws${path.sep}`)) {
+        return { path: path.join(path.dirname(args.importer), 'web-socket.browser.js') };
+      }
+      return null;
+    });
+    // Also catch direct imports like 'it-ws/web-socket.js'
+    build.onResolve({ filter: /it-ws[\\\/].*web-socket\.js$/ }, args => {
+      return { path: args.path.replace('web-socket.js', 'web-socket.browser.js') };
+    });
+  }
+};
+
 const buildOptions = {
   entryPoints: {
     'libp2p-test': path.join(__dirname, 'panel/libp2p-test.js'),
@@ -27,6 +45,10 @@ const buildOptions = {
   target: 'es2020',
   sourcemap: true,
   logLevel: 'info',
+  plugins: [aliasItWsWebSocket],
+  alias: {
+    'ws': path.join(__dirname, 'browser-shims/ws.js')
+  },
   external: [
     // Keep Chrome extension APIs as external
     'chrome',
