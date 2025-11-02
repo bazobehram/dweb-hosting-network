@@ -1,0 +1,180 @@
+{
+  "name": "dweb-desktop-node",
+  "version": "1.0.0",
+  "description": "DWeb Network Desktop Node - Run your own distributed web hosting node",
+  "main": "src/main.js",
+  "author": "DWeb Network Contributors",
+  "license": "MIT",
+  "homepage": "https://dweb.network",
+  "scripts": {
+    "start": "electron src/main.js",
+    "dev": "electron src/main.js --dev",
+    "build": "node scripts/create-icons.js && electron-builder",
+    "build:win": "node scripts/create-icons.js && electron-builder --win",
+    "build:mac": "node scripts/create-icons.js && electron-builder --mac",
+    "build:linux": "node scripts/create-icons.js && electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --publish=never",
+    "dist:win": "electron-builder --win --publish=never",
+    "dist:mac": "electron-builder --mac --publish=never",
+    "dist:linux": "electron-builder --linux --publish=never",
+    "release": "electron-builder --publish=always",
+    "postinstall": "electron-builder install-app-deps",
+    "clean": "rimraf dist",
+    "test": "node test/run-test.js",
+    "test:api": "node test/api-test.js",
+    "services": "node -e \"const child_process = require('child_process'); ['registry', 'signaling', 'storage'].forEach(s => child_process.spawn('node', [`services/${s}.js`], {stdio: 'inherit'}));\"",
+    "registry": "node services/registry.js",
+    "signaling": "node services/signaling.js",
+    "storage": "node services/storage.js"
+  },
+  "build": {
+    "appId": "network.dweb.desktop-node",
+    "productName": "DWeb Desktop Node",
+    "copyright": "Copyright © 2024 DWeb Network Contributors",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "services/**/*",
+      "database/**/*",
+      "ui/**/*",
+      "assets/tray*.png",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*",
+      "!**/.DS_Store",
+      "!**/node_modules/**/*.{md,txt,yml,yaml}"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": ["*.png", "*.svg"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "publisherName": "DWeb Network",
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "public.app-category.networking",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Network",
+      "description": "Distributed web hosting node for the DWeb network",
+      "desktop": {
+        "StartupNotify": "true",
+        "StartupWMClass": "DWeb Desktop Node"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DWeb Desktop Node",
+      "uninstallDisplayName": "DWeb Desktop Node",
+      "license": "LICENSE",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "backgroundColor": "#667eea",
+      "iconSize": 100,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "deb": {
+      "depends": ["gconf2", "gconf-service", "libnotify4", "libappindicator1", "libxtst6", "libnss3"],
+      "recommends": ["pulseaudio"]
+    },
+    "rpm": {
+      "depends": ["libnotify", "libappindicator"]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dweb-network",
+      "repo": "desktop-node"
+    }
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "node-cron": "^3.0.2",
+    "libp2p": "^0.46.0",
+    "@libp2p/webrtc": "^4.0.0",
+    "@libp2p/websockets": "^8.0.0",
+    "@libp2p/kad-dht": "^10.0.0",
+    "@chainsafe/libp2p-noise": "^13.0.0",
+    "@libp2p/mplex": "^10.0.0",
+    "@libp2p/identify": "^1.0.0",
+    "@libp2p/circuit-relay-v2": "^1.0.0",
+    "@libp2p/autonat": "^1.0.0",
+    "@libp2p/ping": "^1.0.0",
+    "@multiformats/multiaddr": "^12.1.0",
+    "electron-updater": "^6.1.4"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "rimraf": "^5.0.5",
+    "nodemon": "^3.0.1",
+    "jimp": "^0.22.10",
+    "to-ico": "^1.1.5"
+  }
+}

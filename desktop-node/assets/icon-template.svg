@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#bgGrad)" stroke="#1e40af" stroke-width="4"/>
+  
+  <!-- Central node -->
+  <circle cx="128" cy="128" r="24" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="3"/>
+  
+  <!-- Surrounding nodes -->
+  <circle cx="128" cy="64" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="180" cy="96" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="192" cy="160" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="128" cy="192" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="64" cy="160" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="76" cy="96" r="12" fill="url(#nodeGrad)" stroke="#ffffff" stroke-width="2"/>
+  
+  <!-- Connection lines -->
+  <g stroke="#ffffff" stroke-width="2" opacity="0.7">
+    <line x1="128" y1="104" x2="128" y2="64"/>
+    <line x1="149" y1="115" x2="180" y2="96"/>
+    <line x1="149" y1="141" x2="192" y2="160"/>
+    <line x1="128" y1="152" x2="128" y2="192"/>
+    <line x1="107" y1="141" x2="64" y2="160"/>
+    <line x1="107" y1="115" x2="76" y2="96"/>
+  </g>
+  
+  <!-- DWeb text -->
+  <text x="128" y="220" font-family="Arial, sans-serif" font-size="18" font-weight="bold" 
+        text-anchor="middle" fill="#ffffff">DWeb</text>
+</svg>
