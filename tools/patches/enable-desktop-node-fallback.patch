@@ -1,0 +1,10 @@
+--- a/extension/resolver/settings.js
++++ b/extension/resolver/settings.js
+@@ -1,4 +1,5 @@
+ export const settings = {
+-  fallbackToRegistry: false,
+-  preferCache: false
++  fallbackToRegistry: true,  // Enable fallback to desktop node
++  preferCache: false,
++  desktopNodeMode: true      // Enable desktop node integration
+ };

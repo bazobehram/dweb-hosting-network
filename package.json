@@ -10,11 +10,18 @@
   ],
   "scripts": {
     "lint": "echo \"No lint configuration yet\"",
-    "test": "echo \"No tests configured yet\"",
+    "test": "node tools/comprehensive-test-runner.js",
     "dev": "echo \"Use workspace scripts\"",
-    "test:ui": "node tools/playwright-test.js",
-    "test:comprehensive": "node tools/comprehensive-test.js",
-    "test:two-browsers": "node tools/test-two-browsers.js"
+    "test:e2e": "node tools/e2e-tests.js",
+    "test:p2p": "node tools/test-p2p-two-browsers.js",
+    "test:comprehensive": "node tools/comprehensive-test-runner.js",
+    "test:quick": "node tools/quick-test.js",
+    "test:workflow": "node tools/test-full-workflow.js",
+    "demo:architecture": "node tools/demo-current-architecture.js",
+    "setup:extension": "node tools/setup-extension.js",
+    "fix:domain-replicas": "node tools/fix-domain-replicas.js",
+    "setup:production": "node tools/production-setup.js",
+    "deploy:prod": "docker-compose -f docker-compose.prod.yml up -d"
   },
   "devDependencies": {
     "playwright": "^1.40.0",

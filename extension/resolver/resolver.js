@@ -1,4 +1,4 @@
-import { RegistryClient } from "../scripts/api/registryClient.js";
+import { MultiRegistryClient } from "../scripts/api/multiRegistryClient.js";
 import { settings } from "./settings.js";
 import { TelemetryClient } from "../scripts/telemetry/telemetryClient.js";
 
@@ -52,7 +52,7 @@ let storageServiceOrigin = computeOrigin(storageServiceUrl);
 if (registryUrlInput) registryUrlInput.value = config.registry;
 if (storageServiceUrlInput) storageServiceUrlInput.value = config.storage;
 
-let registryClient = new RegistryClient(config.registry, {
+let registryClient = new MultiRegistryClient({
   apiKey: currentRegistryApiKey,
 });
 const telemetry = new TelemetryClient({ component: "resolver" });
@@ -180,10 +180,6 @@ resolveBtn.addEventListener("click", async () => {
       return;
     }
 
-    appendLog(
-      `Manifest ${record.manifestId} with ${record.replicas?.length ?? 0} replicas`
-    );
-
     manifestId = record.manifestId;
     telemetry.setContext("manifestId", manifestId);
     const manifest = await registryClient.getManifest(manifestId);
@@ -202,6 +198,15 @@ resolveBtn.addEventListener("click", async () => {
       return;
     }
 
+    // FIX: Use manifest replicas if domain replicas missing (common registry sync issue)
+    const replicas = record.replicas && record.replicas.length > 0 
+      ? record.replicas 
+      : (manifest.replicas || []);
+    
+    appendLog(
+      `Manifest ${record.manifestId} with ${replicas.length} replicas (from ${record.replicas?.length > 0 ? 'domain' : 'manifest'})`
+    );
+
     currentResolveStats.expectedChunks = manifest.chunkCount ?? 0;
 
     appendLog(
@@ -210,7 +215,7 @@ resolveBtn.addEventListener("click", async () => {
 
     const chunks = [];
     for (let i = 0; i < manifest.chunkCount; i += 1) {
-      const chunkData = await fetchChunk(manifestId, i, record.replicas ?? []);
+      const chunkData = await fetchChunk(manifestId, i, replicas);
       if (!chunkData) {
         appendLog(`Failed to fetch chunk ${i}`);
         const failureReason = `chunk-${i}-fetch-failed`;
@@ -460,19 +465,34 @@ async function fetchChunk(manifestId, index, replicas) {
     }
   }
 
-  // Pure P2P mode: no registry fallback, no storage pointer
-  appendLog(`Pure P2P mode: chunk ${index} must come from peers only.`);
-  noteFallback("peer-only-mode");
-  recordChunkSource("fallback-none", {
-    chunkIndex: index,
-    durationMs: elapsedMs(),
-    fallbackTriggered: true,
-    fallbackReason: "peer-only-mode",
-    success: false
-  });
+  // Registry fallback enabled
+  if (settings.fallbackToRegistry) {
+    try {
+      appendLog(`Falling back to registry for chunk ${index}...`);
+      const response = await registryClient.getChunk(manifestId, index);
+      if (response?.data) {
+        appendLog(`Chunk ${index} fetched from registry.`);
+        noteFallback("peer-unavailable");
+        recordChunkSource("registry", {
+          chunkIndex: index,
+          durationMs: elapsedMs(),
+          fallbackTriggered: true,
+          fallbackReason: aggregatedFallbackReason(),
+          success: true
+        });
+        return base64ToUint8Array(response.data);
+      }
+      appendLog(`Registry fallback failed for chunk ${index}.`);
+      noteFallback("registry-unavailable");
+    } catch (error) {
+      appendLog(`Registry fallback error for chunk ${index}: ${error.message}`);
+      noteFallback("registry-error");
+    }
+  } else {
+    appendLog(`Pure P2P mode: chunk ${index} must come from peers only.`);
+    noteFallback("peer-only-mode");
+  }
 
-  appendLog(`Chunk ${index} unavailable.`);
-  noteFallback("chunk-unavailable");
   recordChunkSource("fallback-none", {
     chunkIndex: index,
     durationMs: elapsedMs(),
@@ -480,6 +500,8 @@ async function fetchChunk(manifestId, index, replicas) {
     fallbackReason: aggregatedFallbackReason(),
     success: false
   });
+
+  appendLog(`Chunk ${index} unavailable.`);
   return null;
 }
 

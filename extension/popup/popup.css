@@ -19,9 +19,15 @@ main {
 
 header {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.status-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 h1 {
@@ -57,6 +63,26 @@ h1 {
 .badge-unknown {
   background: rgba(155, 89, 182, 0.15);
   color: #9b59b6;
+}
+
+.badge-available {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.badge-unavailable {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.badge-checking {
+  background: rgba(241, 196, 15, 0.15);
+  color: #f1c40f;
+}
+
+.badge-error {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
 }
 
 label {
@@ -125,5 +151,52 @@ form {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.node-settings {
+  background: #151924;
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #222637;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.setting-row label {
+  margin-bottom: 0;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: #f5f7ff;
+}
+
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #576bff;
+}
+
+.node-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #222637;
+}
+
+.node-info small {
+  color: #9aa0b5;
+}
+
+.node-info a {
+  color: #576bff;
+  text-decoration: underline;
+}
+
+.node-info a:hover {
+  color: #6a7cff;
 }
 

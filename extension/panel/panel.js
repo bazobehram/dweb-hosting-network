@@ -2861,6 +2861,11 @@ sendFileBtn?.addEventListener('click', async () => {
     appendLog('Select a file to send.');
     return;
   }
+  
+  // Warn if no peers available (content won't be replicated)
+  if (peers.length === 0) {
+    appendChannelLog('⚠️ Warning: No peers connected. File will be sent but not replicated to the network.');
+  }
 
   appendChannelLog(
     `Preparing transfer: ${file.name} (${formatBytes(file.size)})`
@@ -2917,6 +2922,18 @@ registerDomainBtn?.addEventListener('click', async () => {
   }
   if (!owner) {
     appendRegistryLog('Owner ID is required.');
+    return;
+  }
+  
+  // Validate that peers are available for content replication
+  if (peers.length === 0) {
+    appendRegistryLog('❌ Cannot register domain: No peers connected to P2P network.');
+    appendRegistryLog('Please connect to the signaling server and wait for peers to join.');
+    if (domainBindStatus) {
+      domainBindStatus.textContent = 'No peers available';
+      domainBindStatus.classList.remove('pill-success');
+      domainBindStatus.classList.add('pill-error');
+    }
     return;
   }
 

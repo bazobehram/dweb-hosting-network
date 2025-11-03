@@ -161,11 +161,26 @@ class SignalingService {
       return;
     }
 
+    // Check if this is a re-registration (peer refreshing the page)
+    const isReRegistration = this.peers.has(peerId);
+    
+    // If re-registering, close old connection first
+    if (isReRegistration) {
+      const oldWs = this.peers.get(peerId);
+      try {
+        if (oldWs !== ws && oldWs.readyState === 1) {
+          oldWs.close();
+        }
+      } catch (error) {
+        console.warn(`Failed to close old connection for ${peerId}:`, error.message);
+      }
+    }
+
     // Register peer
     this.peers.set(peerId, ws);
     ws.peerId = peerId;
     
-    console.log(`Peer registered: ${peerId}`);
+    console.log(`Peer ${isReRegistration ? 're-' : ''}registered: ${peerId}`);
     
     // Send registration confirmation
     ws.send(JSON.stringify({
@@ -175,8 +190,10 @@ class SignalingService {
       peers: this.getPeerList(peerId) // Exclude self
     }));
 
-    // Broadcast new peer to others
-    this.broadcastPeerJoined(peerId);
+    // Only broadcast peer-joined for NEW peers, not re-registrations
+    if (!isReRegistration) {
+      this.broadcastPeerJoined(peerId);
+    }
   }
 
   handleWebRTCMessage(ws, message) {

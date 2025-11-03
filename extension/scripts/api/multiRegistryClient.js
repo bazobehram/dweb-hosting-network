@@ -239,28 +239,24 @@ export class MultiRegistryClient {
   }
 
   async getChunk(manifestId, chunkIndex) {
-    // Try storage service first (desktop node)
+    // TESTING MODE: Desktop node only, no VPS fallback
+    console.log('[MultiRegistry] TEST MODE: Desktop node only (VPS disabled)');
+    
+    // Try storage service (desktop node only)
     try {
       const storageUrl = 'http://localhost:8789';
       const response = await fetch(`${storageUrl}/chunks/${encodeURIComponent(manifestId)}/${encodeURIComponent(chunkIndex)}`);
       if (response.ok) {
+        console.log('[MultiRegistry] ✅ Chunk found in desktop node storage');
         return await response.json();
       }
+      console.log('[MultiRegistry] ❌ Chunk not in desktop node storage');
     } catch (error) {
       console.warn('[MultiRegistry] Desktop node storage failed:', error.message);
     }
 
-    // Fallback to VPS storage service
-    try {
-      const vpsStorageUrl = 'http://34.107.74.70:8789';
-      const response = await fetch(`${vpsStorageUrl}/chunks/${encodeURIComponent(manifestId)}/${encodeURIComponent(chunkIndex)}`);
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (error) {
-      console.warn('[MultiRegistry] VPS storage failed:', error.message);
-    }
-
+    // VPS fallback DISABLED for testing
+    console.warn('[MultiRegistry] ⚠️ VPS fallback disabled - chunk unavailable');
     return null;
   }
 

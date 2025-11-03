@@ -136,8 +136,21 @@ server.on('listening', () => {
  */
 function registerPeer(socket, message) {
   const peerId = message.peerId ?? nanoid(10);
+  const isReRegistration = peers.has(peerId);
 
   const sanitizedMetadata = sanitizePeerMetadata(message.metadata);
+
+  // If peer is re-registering (refresh), close old socket first
+  if (isReRegistration) {
+    const oldEntry = peers.get(peerId);
+    try {
+      if (oldEntry.socket !== socket) {
+        oldEntry.socket.terminate();
+      }
+    } catch (error) {
+      console.warn(`⚠️  Failed to terminate old socket for ${peerId}:`, error.message);
+    }
+  }
 
   peers.set(peerId, {
     socket,
@@ -146,7 +159,7 @@ function registerPeer(socket, message) {
     metadata: sanitizedMetadata
   });
 
-  console.log(`✅ Peer registered: ${peerId}`);
+  console.log(`✅ Peer ${isReRegistration ? 're-' : ''}registered: ${peerId}`);
 
   socket.send(
     JSON.stringify({
@@ -157,14 +170,18 @@ function registerPeer(socket, message) {
     })
   );
 
-  broadcastPeerUpdate({
-    type: 'peer-joined',
-    peerId,
-    capabilities: message.capabilities ?? [],
-    lastSeen: peers.get(peerId).lastSeen,
-    metadata: { ...sanitizedMetadata }
-  }, peerId);
+  // Only broadcast peer-joined if this is a NEW peer, not a re-registration
+  if (!isReRegistration) {
+    broadcastPeerUpdate({
+      type: 'peer-joined',
+      peerId,
+      capabilities: message.capabilities ?? [],
+      lastSeen: peers.get(peerId).lastSeen,
+      metadata: { ...sanitizedMetadata }
+    }, peerId);
+  }
 
+  // Always broadcast metadata update (for re-registrations)
   broadcastPeerUpdate({
     type: 'peer-metadata',
     peerId,

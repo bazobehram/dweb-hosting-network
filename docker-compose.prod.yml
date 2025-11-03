@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  dweb-registry:
+    build: 
+      context: ./desktop-node
+      dockerfile: Dockerfile.production
+    ports:
+      - "8788:8788"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/registry.json
+    volumes:
+      - ./data/registry:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8788/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dweb-storage:
+    build:
+      context: ./backend/storage-service
+      dockerfile: Dockerfile
+    ports:
+      - "8789:8789"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./data/storage:/app/data
+    restart: unless-stopped
+
+  dweb-signaling:
+    build:
+      context: ./desktop-node
+      dockerfile: Dockerfile.signaling
+    ports:
+      - "8787:8787"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - dweb-registry
+      - dweb-storage
+      - dweb-signaling
+    restart: unless-stopped
+
+volumes:
+  registry-data:
+  storage-data:

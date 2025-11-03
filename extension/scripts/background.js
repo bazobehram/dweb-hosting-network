@@ -2,7 +2,8 @@
 
 import { WebRTCConnectionManager } from './webrtc/connectionManager.js';
 import { ChunkManager } from './webrtc/chunkManager.js';
-import { RegistryClient } from './api/registryClient.js';
+import { MultiRegistryClient } from './api/multiRegistryClient.js';
+import { MultiSignalingClient } from './api/multiSignalingClient.js';
 
 const peerChunkQueue = [];
 const pendingChunkResponses = new Map();
@@ -19,6 +20,7 @@ let discoveredPeers = [];
 const activePeerConnections = new Map(); // peerId -> { manager, status, connectedAt }
 const connectionAttempts = new Map(); // peerId -> attemptCount
 
+// Legacy constants for compatibility - now handled by multi-clients
 const DEFAULT_SIGNALING_URL = 'ws://34.107.74.70:8787';
 const DEFAULT_REGISTRY_URL = 'http://34.107.74.70:8788';
 const DEFAULT_SIGNALING_SECRET = 'choose-a-strong-secret';

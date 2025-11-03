@@ -1,0 +1,15 @@
+[Unit]
+Description=DWeb Registry Service
+After=network.target
+
+[Service]
+Type=simple
+User=dweb
+WorkingDirectory=D:\Projects\dweb-hosting-network/desktop-node
+ExecStart=/usr/bin/node services/registry.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

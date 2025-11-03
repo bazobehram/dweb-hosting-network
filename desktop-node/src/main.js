@@ -304,10 +304,30 @@ class DesktopNodeManager {
     // Restart services
     ipcMain.handle('restart-services', async () => {
       try {
-        await this.stopServices();
-        await this.startServices();
+        console.log('Restart services requested...');
+        
+        // Set a timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Restart timeout after 30 seconds')), 30000)
+        );
+        
+        const restartPromise = (async () => {
+          console.log('Stopping services...');
+          await this.stopServices();
+          
+          // Small delay to ensure clean shutdown
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          console.log('Starting services...');
+          await this.startServices();
+        })();
+        
+        await Promise.race([restartPromise, timeoutPromise]);
+        
+        console.log('✅ Services restarted successfully');
         return { success: true };
       } catch (error) {
+        console.error('❌ Restart failed:', error);
         return { success: false, error: error.message };
       }
     });

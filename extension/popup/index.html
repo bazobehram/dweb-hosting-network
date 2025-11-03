@@ -10,7 +10,10 @@
     <main>
       <header>
         <h1>DWeb Resolver</h1>
-        <span id="statusBadge" class="badge badge-unknown">Status: Unknown</span>
+        <div class="status-container">
+          <span id="statusBadge" class="badge badge-unknown">Status: Unknown</span>
+          <span id="nodeStatusBadge" class="badge badge-checking">Desktop Node: Checking...</span>
+        </div>
       </header>
 
       <form id="resolveForm">
@@ -27,8 +30,19 @@
         </div>
       </form>
 
+      <section class="node-settings">
+        <div class="setting-row">
+          <label for="preferDesktopNode">Prefer Desktop Node</label>
+          <input type="checkbox" id="preferDesktopNode" checked>
+        </div>
+        <div class="node-info" id="nodeInfo">
+          <small>Desktop node provides better privacy and performance</small>
+        </div>
+      </section>
+
       <section class="actions">
         <button id="openPanelBtn" class="secondary">Open Panel</button>
+        <button id="settingsBtn" class="secondary">Settings</button>
       </section>
     </main>
 

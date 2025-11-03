@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi Registry Client Test</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #d1ecf1; color: #0c5460; }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover { background: #0056b3; }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>DWeb Extension Multi-Client Test</h1>
+    
+    <div class="test-section">
+        <h2>Desktop Node Detection</h2>
+        <button onclick="testDesktopNodeHealth()">Test Desktop Node Health</button>
+        <div id="healthResult" class="status info">Click button to test desktop node health</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Registry Client Tests</h2>
+        <button onclick="testRegistryOperations()">Test Registry Operations</button>
+        <div id="registryResult" class="status info">Click button to test registry operations</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Endpoint Status</h2>
+        <button onclick="checkEndpointStatus()">Check Current Endpoints</button>
+        <div id="endpointResult" class="status info">Click button to check endpoint status</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Fallback Test</h2>
+        <button onclick="testFallbackBehavior()">Test VPS Fallback</button>
+        <div id="fallbackResult" class="status info">Click button to test VPS fallback (this will simulate desktop node failure)</div>
+    </div>
+
+    <script type="module">
+        import { MultiRegistryClient } from './scripts/api/multiRegistryClient.js';
+        
+        let client = null;
+        
+        window.testDesktopNodeHealth = async function() {
+            const resultDiv = document.getElementById('healthResult');
+            resultDiv.className = 'status info';
+            resultDiv.textContent = 'Testing desktop node health...';
+            
+            try {
+                // Create a temporary client to test health
+                const testClient = new MultiRegistryClient();
+                const isHealthy = await testClient.checkDesktopNodeHealth();
+                
+                if (isHealthy) {
+                    resultDiv.className = 'status success';
+                    resultDiv.textContent = '✅ Desktop node is healthy and available';
+                } else {
+                    resultDiv.className = 'status error';
+                    resultDiv.textContent = '❌ Desktop node is not available - will fallback to VPS';
+                }
+                
+                testClient.destroy();
+                
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.textContent = `❌ Error testing desktop node: ${error.message}`;
+            }
+        };
+        
+        window.testRegistryOperations = async function() {
+            const resultDiv = document.getElementById('registryResult');
+            resultDiv.className = 'status info';
+            resultDiv.innerHTML = 'Testing registry operations...<br>';
+            
+            try {
+                if (!client) {
+                    client = new MultiRegistryClient();
+                }
+                
+                const testDomain = `test-${Date.now()}.dweb`;
+                const testManifestId = `manifest-${Date.now()}`;
+                
+                // Test domain registration
+                resultDiv.innerHTML += 'Registering test domain...<br>';
+                const domainResult = await client.registerDomain({
+                    domain: testDomain,
+                    owner: 'test-extension-user',
+                    manifestId: testManifestId
+                });
+                
+                resultDiv.innerHTML += `✅ Domain registered: ${JSON.stringify(domainResult)}<br>`;
+                
+                // Test domain lookup
+                resultDiv.innerHTML += 'Looking up domain...<br>';
+                const lookupResult = await client.getDomain(testDomain);
+                resultDiv.innerHTML += `✅ Domain lookup: ${JSON.stringify(lookupResult)}<br>`;
+                
+                // Test manifest registration
+                resultDiv.innerHTML += 'Registering test manifest...<br>';
+                const manifestResult = await client.registerManifest({
+                    transferId: testManifestId,
+                    fileName: 'test.html',
+                    fileSize: 1024,
+                    mimeType: 'text/html',
+                    chunkSize: 256,
+                    chunkCount: 4,
+                    sha256: 'test-hash-' + Date.now(),
+                    chunkHashes: ['hash1', 'hash2', 'hash3', 'hash4']
+                });
+                
+                resultDiv.innerHTML += `✅ Manifest registered: ${JSON.stringify(manifestResult)}<br>`;
+                
+                resultDiv.className = 'status success';
+                resultDiv.innerHTML += '<strong>✅ All registry operations completed successfully!</strong>';
+                
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.innerHTML += `❌ Error: ${error.message}`;
+            }
+        };
+        
+        window.checkEndpointStatus = async function() {
+            const resultDiv = document.getElementById('endpointResult');
+            resultDiv.className = 'status info';
+            
+            try {
+                if (!client) {
+                    client = new MultiRegistryClient();
+                }
+                
+                // Wait a moment for health check to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                const status = client.getStatus();
+                const endpoints = client.getCurrentEndpoints();
+                
+                resultDiv.innerHTML = `
+                    <strong>Current Status:</strong><br>
+                    <pre>${JSON.stringify(status, null, 2)}</pre>
+                    <strong>Active Endpoints:</strong><br>
+                    <pre>${JSON.stringify(endpoints, null, 2)}</pre>
+                `;
+                
+                if (status.desktopNodeAvailable) {
+                    resultDiv.className = 'status success';
+                } else {
+                    resultDiv.className = 'status error';
+                }
+                
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        };
+        
+        window.testFallbackBehavior = async function() {
+            const resultDiv = document.getElementById('fallbackResult');
+            resultDiv.className = 'status info';
+            resultDiv.innerHTML = 'Testing fallback behavior...<br>';
+            
+            try {
+                if (!client) {
+                    client = new MultiRegistryClient();
+                }
+                
+                // Simulate desktop node failure by setting it as unavailable
+                client.desktopNodeAvailable = false;
+                
+                resultDiv.innerHTML += 'Forced desktop node unavailable...<br>';
+                
+                // Try to perform an operation - should fallback to VPS
+                const testDomain = `fallback-test-${Date.now()}.dweb`;
+                
+                resultDiv.innerHTML += 'Attempting domain lookup with forced fallback...<br>';
+                
+                const result = await client.getDomain('nonexistent-domain.dweb');
+                const status = client.getStatus();
+                
+                resultDiv.innerHTML += `Operation result: ${result ? 'Found' : 'Not found (expected)'}<br>`;
+                resultDiv.innerHTML += `Active endpoint: ${status.activeEndpoint}<br>`;
+                
+                if (status.activeEndpoint === 'vps') {
+                    resultDiv.className = 'status success';
+                    resultDiv.innerHTML += '<strong>✅ Fallback to VPS working correctly!</strong>';
+                } else {
+                    resultDiv.className = 'status error';
+                    resultDiv.innerHTML += '<strong>❌ Fallback did not work as expected</strong>';
+                }
+                
+                // Reset desktop node availability
+                client.desktopNodeAvailable = null;
+                client.checkDesktopNodeHealth();
+                
+            } catch (error) {
+                resultDiv.className = 'status error';
+                resultDiv.innerHTML += `❌ Error: ${error.message}`;
+            }
+        };
+        
+        // Initialize
+        console.log('Multi-client test page loaded');
+        
+        // Auto-run health check
+        setTimeout(testDesktopNodeHealth, 1000);
+    </script>
+</body>
+</html>
